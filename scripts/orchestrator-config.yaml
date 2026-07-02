@@ -1,0 +1,77 @@
+# Orchestrator Configuration
+
+orchestrator:
+  # 最大重试次数
+  max_retries: 3
+  
+  # 重试延迟（秒）
+  retry_delay: 5.0
+  
+  # 任务超时（秒）
+  task_timeout: 600
+  
+  # 健康检查间隔（秒）
+  health_check_interval: 30
+  
+  # 最大并行任务数
+  max_concurrent_tasks: 3
+  
+  # 重试时升级模型
+  upgrade_model_on_retry: true
+  
+  # 失败时降级为简化分析
+  fallback_to_simplified: true
+  
+  # 检查点文件
+  checkpoint_file: ".checkpoint.json"
+  
+  # 日志文件
+  log_file: "orchestrator.log"
+
+# 异常处理策略
+exception_handling:
+  timeout:
+    action: retry
+    max_retries: 3
+    exponential_backoff: true
+  
+  needs_context:
+    action: provide_context
+    max_retries: 2
+  
+  blocked:
+    action: decompose
+    max_retries: 2
+  
+  permission:
+    action: escalate
+    notify_user: true
+  
+  rate_limit:
+    action: wait_and_retry
+    initial_wait: 60
+  
+  out_of_memory:
+    action: simplify
+    max_retries: 1
+
+# 审查配置
+review:
+  completeness:
+    required_sections: true
+    no_placeholders: true
+    min_tables: 1
+    min_code_blocks: 2
+  
+  quality:
+    min_content_length: 500
+    has_tables: true
+    has_code_examples: true
+    has_suggestions: true
+
+# 模型选择
+models:
+  default: "bailian/qwen3.7-plus"
+  fast: "bailian/qwen3.7-plus"
+  strong: "bailian/qwen3.7-plus"
+  fallback: "bailian/qwen3.7-plus"
