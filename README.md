@@ -12,6 +12,20 @@
 | **原则蒸馏** | 提炼可移植设计原则（Golden Rules）和陷阱（Gotchas） |
 | **自动化脚本** | 项目检测、研究计划生成、文件列表生成、验证 |
 
+## 安装
+
+将当前 skill 拷贝到 OpenClaw 的 skills 工作目录即可使用：
+
+```bash
+# 创建目标目录（如果不存在）
+mkdir -p ~/.openclaw/workspace/skills
+
+# 拷贝 skill 到工作目录
+cp -r /path/to/source-analyzer ~/.openclaw/workspace/skills/
+```
+
+安装后，即可在 OpenClaw 中使用 `source-analyzer` skill 进行项目分析。
+
 ## 快速开始
 
 ### 自动化流程（推荐）
