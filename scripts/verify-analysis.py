@@ -49,6 +49,11 @@ REQUIRED_FILES = {
         "forbidden": ["TBD", "TODO", "待补充", "推荐 TBD"],
         "min_tables": 1,
     },
+    "dependencies.md": {
+        "sections": ["依赖", "版本", "许可证", "Stars"],
+        "forbidden": ["TBD", "TODO", "待补充"],
+        "min_tables": 1,
+    },
     "INDEX.md": {
         "sections": ["导航", "索引", "概览"],
         "forbidden": [],
@@ -562,16 +567,16 @@ def check_maximum_mode(analysis_dir: str) -> dict:
     result["details"]["total_files"] = result["total_files"]
     
     # 2. 检查 Layer 1: 项目级分析
-    layer1_files = ["00-README.md", "01-architecture.md", "03-quality-score.md", "04-learning-value.md"]
+    layer1_files = ["00-README.md", "01-architecture.md", "03-quality-score.md", "04-learning-value.md", "dependencies.md"]
     layer1_exists = [f for f in layer1_files if (analysis_path / f).exists()]
-    result["layer1_ok"] = len(layer1_exists) >= 3
+    result["layer1_ok"] = len(layer1_exists) >= 4
     result["details"]["layer1"] = {
         "required": layer1_files,
         "exists": layer1_exists,
         "count": len(layer1_exists)
     }
     if not result["layer1_ok"]:
-        result["issues"].append(f"Layer 1 不完整：{len(layer1_exists)}/4 个文件")
+        result["issues"].append(f"Layer 1 不完整：{len(layer1_exists)}/5 个文件")
     
     # 3. 检查 Layer 2: 模块级分析
     module_dirs = [d for d in analysis_path.iterdir() if d.is_dir() and d.name.startswith("10-module-")]
@@ -822,6 +827,218 @@ def generate_maximum_mode_report(analysis_dir: str, check_result: dict) -> str:
     return str(report_file)
 
 
+def check_recursive_mode(analysis_dir: str) -> dict:
+    """检查是否满足递归深度分析模式要求
+    
+    递归深度分析模式要求：
+    1. 项目级分析 (00-project-level/)
+    2. 模块深度分析 (10-module-deep/) - 每个模块有独立的完整分析
+    3. 跨模块分析 (20-cross-module/)
+    4. 每个模块有 INDEX.md
+    5. 中型模块有 Layer 2+3
+    """
+    analysis_path = Path(analysis_dir)
+    
+    result = {
+        "is_recursive_mode": False,
+        "total_files": 0,
+        "project_level_ok": False,
+        "module_deep_ok": False,
+        "cross_module_ok": False,
+        "module_count": 0,
+        "modules_with_index": 0,
+        "modules_with_layer2": 0,
+        "modules_with_layer3": 0,
+        "issues": [],
+        "details": {}
+    }
+    
+    # 1. 统计总文件数
+    md_files = list(analysis_path.glob("**/*.md"))
+    result["total_files"] = len(md_files)
+    result["details"]["total_files"] = result["total_files"]
+    
+    # 2. 检查项目级分析
+    project_level_dir = analysis_path / "00-project-level"
+    if project_level_dir.exists():
+        project_files = list(project_level_dir.glob("*.md"))
+        has_dependencies = (project_level_dir / "dependencies.md").exists()
+        result["project_level_ok"] = len(project_files) >= 3 and has_dependencies
+        result["details"]["project_level"] = {
+            "exists": True,
+            "files": len(project_files),
+            "has_dependencies": has_dependencies
+        }
+        if not has_dependencies:
+            result["issues"].append("缺少 00-project-level/dependencies.md（项目依赖分析）")
+    else:
+        result["details"]["project_level"] = {"exists": False, "files": 0}
+        result["issues"].append("缺少 00-project-level/ 目录")
+    
+    # 3. 检查模块深度分析
+    module_deep_dir = analysis_path / "10-module-deep"
+    if module_deep_dir.exists():
+        # 统计模块目录
+        module_dirs = [d for d in module_deep_dir.iterdir() if d.is_dir() and not d.name.startswith('_')]
+        result["module_count"] = len(module_dirs)
+        
+        # 检查每个模块的完整性
+        for module_dir in module_dirs:
+            module_name = module_dir.name
+            
+            # 检查 INDEX.md
+            if (module_dir / "INDEX.md").exists():
+                result["modules_with_index"] += 1
+            
+            # 检查 Layer 2 (子模块)
+            layer2_dirs = [d for d in module_dir.iterdir() if d.is_dir() and d.name.startswith("10-")]
+            if layer2_dirs:
+                result["modules_with_layer2"] += 1
+            
+            # 检查 Layer 3 (文件级)
+            layer3_dirs = [d for d in module_dir.iterdir() if d.is_dir() and d.name.startswith("20-")]
+            if layer3_dirs:
+                result["modules_with_layer3"] += 1
+        
+        result["module_deep_ok"] = result["module_count"] >= 3
+        result["details"]["module_deep"] = {
+            "exists": True,
+            "module_count": result["module_count"],
+            "with_index": result["modules_with_index"],
+            "with_layer2": result["modules_with_layer2"],
+            "with_layer3": result["modules_with_layer3"]
+        }
+    else:
+        result["details"]["module_deep"] = {"exists": False}
+        result["issues"].append("缺少 10-module-deep/ 目录")
+    
+    # 4. 检查跨模块分析
+    cross_module_dir = analysis_path / "20-cross-module"
+    if cross_module_dir.exists():
+        cross_files = list(cross_module_dir.glob("*.md"))
+        result["cross_module_ok"] = len(cross_files) >= 2
+        result["details"]["cross_module"] = {
+            "exists": True,
+            "files": len(cross_files)
+        }
+    else:
+        result["details"]["cross_module"] = {"exists": False, "files": 0}
+        result["issues"].append("缺少 20-cross-module/ 目录")
+    
+    # 5. 判断是否满足递归模式
+    # 阈值：递归模式应远超最大模式的 40 个文档
+    min_total_files = 50
+    min_module_count = 5
+    min_index_ratio = 0.8  # 至少 80% 的模块有 INDEX.md
+    
+    index_ratio = result["modules_with_index"] / max(1, result["module_count"])
+    
+    result["is_recursive_mode"] = (
+        result["total_files"] >= min_total_files and
+        result["project_level_ok"] and
+        result["module_deep_ok"] and
+        result["cross_module_ok"] and
+        result["module_count"] >= min_module_count and
+        result["modules_with_index"] >= 3 and
+        index_ratio >= min_index_ratio
+    )
+    
+    if result["total_files"] < min_total_files:
+        result["issues"].append(f"文档总数不足：{result['total_files']} 个（需要 >= {min_total_files}）")
+    if result["module_count"] < min_module_count:
+        result["issues"].append(f"模块数不足：{result['module_count']} 个（需要 >= {min_module_count}）")
+    if result["modules_with_index"] < 3:
+        result["issues"].append(f"模块 INDEX.md 不足：{result['modules_with_index']} 个（需要 >= 3）")
+    if index_ratio < min_index_ratio:
+        result["issues"].append(f"INDEX.md 覆盖率不足：{index_ratio:.0%}（需要 >= {min_index_ratio:.0%}）")
+    
+    return result
+
+
+def generate_recursive_mode_report(analysis_dir: str, check_result: dict) -> str:
+    """生成递归深度分析模式验证报告"""
+    analysis_path = Path(analysis_dir)
+    report_file = analysis_path / "RECURSIVE_MODE_REPORT.md"
+    
+    content = f"""# 🔁 递归深度分析模式验证报告
+
+**分析目录**: `{analysis_dir}`
+**验证时间**: {datetime.now().strftime("%Y-%m-%d %H:%M")}
+
+---
+
+## 总体评估
+
+| 指标 | 结果 | 状态 |
+|------|------|------|
+| **是否满足递归模式** | {'✅ 是' if check_result['is_recursive_mode'] else '❌ 否'} | {'✅' if check_result['is_recursive_mode'] else '❌'} |
+| **文档总数** | {check_result['total_files']} / 50 | {'✅' if check_result['total_files'] >= 50 else '❌'} |
+| **项目级分析** | {'✅ 完整' if check_result['project_level_ok'] else '❌ 不完整'} | {'✅' if check_result['project_level_ok'] else '❌'} |
+| **模块深度分析** | {'✅ 完整' if check_result['module_deep_ok'] else '❌ 不完整'} | {'✅' if check_result['module_deep_ok'] else '❌'} |
+| **跨模块分析** | {'✅ 完整' if check_result['cross_module_ok'] else '❌ 不完整'} | {'✅' if check_result['cross_module_ok'] else '❌'} |
+
+---
+
+## 模块统计
+
+| 指标 | 数量 |
+|------|------|
+| **模块总数** | {check_result['module_count']} |
+| **有 INDEX.md** | {check_result['modules_with_index']} |
+| **有 Layer 2** | {check_result['modules_with_layer2']} |
+| **有 Layer 3** | {check_result['modules_with_layer3']} |
+
+---
+
+## 问题清单
+
+"""
+    
+    if check_result["issues"]:
+        for issue in check_result["issues"]:
+            content += f"- ⚠️ {issue}\n"
+    else:
+        content += "✅ 无问题\n"
+    
+    content += f"""
+
+---
+
+## 改进建议
+
+"""
+    
+    if not check_result["is_recursive_mode"]:
+        if not check_result["project_level_ok"]:
+            content += "1. **补充项目级分析**\n"
+            content += "   - 创建 00-project-level/ 目录\n"
+            content += "   - 包含 README/architecture/quality-score/learning-value\n\n"
+        
+        if not check_result["module_deep_ok"]:
+            content += "2. **补充模块深度分析**\n"
+            content += "   - 创建 10-module-deep/ 目录\n"
+            content += "   - 为每个模块生成独立分析（至少 3 个模块）\n\n"
+        
+        if not check_result["cross_module_ok"]:
+            content += "3. **补充跨模块分析**\n"
+            content += "   - 创建 20-cross-module/ 目录\n"
+            content += "   - 包含 comparison.md 和 patterns.md\n\n"
+        
+        if check_result["modules_with_index"] < 3:
+            content += "4. **为每个模块添加 INDEX.md**\n\n"
+    else:
+        content += "✅ 已满足递归深度分析模式要求\n"
+    
+    content += f"""
+---
+
+*生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M")}*
+"""
+    
+    report_file.write_text(content)
+    return str(report_file)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Verify analysis output completeness and quality")
     parser.add_argument("analysis_dir", help="Path to analysis output directory")
@@ -829,10 +1046,37 @@ def main():
     parser.add_argument("--quality", action="store_true", help="Check quality (content)")
     parser.add_argument("--all", action="store_true", help="Check both completeness and quality (default)")
     parser.add_argument("--maximum", action="store_true", help="Check if analysis meets maximum mode requirements")
+    parser.add_argument("--recursive", action="store_true", help="Check if analysis meets recursive deep analysis mode requirements")
     
     args = parser.parse_args()
     
     analysis_dir = args.analysis_dir
+    
+    # 递归深度分析模式检查
+    if args.recursive:
+        print(f"\n🔁 递归深度分析模式验证")
+        print(f"=" * 50)
+        
+        check_result = check_recursive_mode(analysis_dir)
+        report_file = generate_recursive_mode_report(analysis_dir, check_result)
+        
+        print(f"\n文档总数: {check_result['total_files']}/50")
+        print(f"项目级分析: {'✅' if check_result['project_level_ok'] else '❌'}")
+        print(f"模块深度分析: {'✅' if check_result['module_deep_ok'] else '❌'}")
+        print(f"跨模块分析: {'✅' if check_result['cross_module_ok'] else '❌'}")
+        print(f"模块数: {check_result['module_count']}")
+        print(f"有 INDEX.md 的模块: {check_result['modules_with_index']}")
+        
+        print(f"\n{'✅ 满足递归模式' if check_result['is_recursive_mode'] else '❌ 不满足递归模式'}")
+        
+        if check_result["issues"]:
+            print(f"\n⚠️ 发现 {len(check_result['issues'])} 个问题:")
+            for issue in check_result["issues"]:
+                print(f"  - {issue}")
+        
+        print(f"\n📄 详细报告: {report_file}")
+        
+        return 0 if check_result["is_recursive_mode"] else 1
     
     # 最大化模式检查
     if args.maximum:

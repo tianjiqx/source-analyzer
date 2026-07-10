@@ -1,5 +1,646 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-07-07 - 模型追踪 + 项目依赖分析（发现优秀第三方库）+ Bug 修复
+
+### 🎯 概述
+
+本次更新解决三个问题：
+1. **Bug**: `smart-analyze.py` 引用 `detection_result['primary_name']` 但该 key 不存在，导致崩溃
+2. **可追溯性**: 分析输出缺少使用的模型名，无法追踪哪个模型产出的结果
+3. **依赖可见性**: 项目依赖散落在各模板，无专门文档，无法系统性发现值得复用的优秀开源库
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `scripts/smart-analyze.py` | Bug 修复 + 新增 `--model` 参数 + Step 6 生成 `project-meta.json` + Phase 1 加入依赖分析任务 |
+| `scripts/verify-analysis.py` | `REQUIRED_FILES` 新增 `dependencies.md` 检查；Layer 1 从 4→5 文档；递归模式也检查 dependencies.md |
+| `scripts/generate-research-plan.py` | 新增 Task 2.5 项目依赖分析；研究范围表新增 P0 项目依赖行 |
+| `SKILL.md` | 输出结构新增 `dependencies.md`；通用模板表新增依赖分析；快速开始示例加 `--model` 参数 |
+| `templates/general/PROJECT_DEPENDENCY_ANALYSIS.md` | **新增** 依赖分析模板 |
+
+### 📦 新增文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `templates/general/PROJECT_DEPENDENCY_ANALYSIS.md` | 4KB | ⭐ 项目依赖分析模板：依赖分类清单、值得关注优秀库分级（⭐/⭐⭐/⭐⭐⭐）、依赖关系图、健康度检查 |
+
+---
+
+### 🔧 新增功能 1: Bug 修复 — primary_name KeyError
+
+**问题**: `detect_project_type()` 返回 `{'primary': 'llm-agent', ...}`，但 `smart-analyze.py` 引用 `detection_result['primary_name']`（不存在），导致 Step 5 崩溃。
+
+**修复**: 从 `PROJECT_TYPE_SIGNATURES[project_type]['name']` 派生显示名，三处引用全部修正。
+
+---
+
+### 🤖 新增功能 2: 模型名追踪
+
+**核心改动**: 分析输出中记录当前使用的模型名，实现可追溯性。
+
+#### 新增参数
+
+```bash
+python3 scripts/smart-analyze.py /path/to/project --model "zai/glm-5.2"
+# 或通过环境变量
+OPENCLAW_MODEL="zai/glm-5.2" python3 scripts/smart-analyze.py /path/to/project
+```
+
+#### 输出位置
+
+| 位置 | 内容 |
+|------|------|
+| `ANALYSIS_PLAN.md` 头部 | `> **分析模型**: \`zai/glm-5.2\`` |
+| `ANALYSIS_PLAN.md` 尾部 | `*分析模型: \`zai/glm-5.2\`*` |
+| `project-meta.json` | `"model": "zai/glm-5.2"` |
+| 终端统计 | `分析模型: zai/glm-5.2` |
+
+#### project-meta.json 结构
+
+```json
+{
+  "project_name": "BashClaw",
+  "project_path": "/home/tianjiqx/opensource/BashClaw",
+  "project_type": "LLM Agent",
+  "project_type_id": "llm-agent",
+  "language": "javascript",
+  "model": "zai/glm-5.2",
+  "templates_count": 15,
+  "files_count": 1,
+  "created_at": "2026-07-07 01:04:45",
+  "tool": "source-analyzer"
+}
+```
+
+#### 模型名优先级
+
+1. `--model` 参数（最高）
+2. `OPENCLAW_MODEL` 环境变量
+3. `"unknown"` 默认值
+
+---
+
+### ⭐ 新增功能 3: 项目依赖分析（强制输出）
+
+**核心目标**: 系统性梳理项目使用的第三方库，发现值得学习和复用的优秀开源库。
+
+#### 模板结构 (PROJECT_DEPENDENCY_ANALYSIS.md)
+
+| 章节 | 内容 |
+|------|------|
+| 1. 依赖总览 | 语言、包管理器、依赖声明文件、生产/开发依赖数 |
+| 2. 依赖分类清单 | 核心框架 / 工具库 / 类型增强 / 开发依赖 / 可选依赖，每个库记录版本/Stars/活跃度/许可证 |
+| 3. ⭐ 值得关注的优秀库 | **核心产出** — 分三级：⭐ 了解 / ⭐⭐ 学习 / ⭐⭐⭐ 强烈推荐，每个库有深度点评 |
+| 4. 依赖关系图 | Mermaid 依赖树 |
+| 5. 依赖健康度 | 版本新鲜度、风险依赖（弃用/漏洞/许可证）|
+| 6. 技术选型观察 | 从依赖选择看项目技术品味 |
+
+#### 优秀库评级标准
+
+| 级别 | 标准 |
+|------|------|
+| ⭐⭐⭐ 强烈推荐 | 解决了通用问题，设计优雅，API 清晰，可直接复用 |
+| ⭐⭐ 值得学习 | 有设计亮点，值得借鉴但不一定直接复用 |
+| ⭐ 值得了解 | 有特色，一句话亮点说明 |
+
+#### 扫描命令参考（内置）
+
+模板包含各语言的依赖文件扫描命令：Node.js/TypeScript、Python、Go、Rust、Java/Maven、Java/Gradle、Ruby、PHP、Swift。
+
+#### 活跃度判断标准
+
+| 标记 | 含义 | 判断依据 |
+|------|------|----------|
+| 🟢 活跃 | 持续维护 | 最近 commit < 3 个月 |
+| 🟡 维护中 | 低频维护 | 3-12 个月 |
+| 🟠 停滞 | 几乎不维护 | 1-2 年 |
+| 🔴 弃用 | 已废弃 | > 2 年或标记 deprecated |
+
+#### 输出路径
+
+```
+output-dir/
+├── 00-project-level/
+│   ├── README.md
+│   ├── architecture.md
+│   ├── dependencies.md    # ⭐ 新增：项目依赖分析
+│   ├── quality-score.md
+│   └── learning-value.md
+```
+
+#### 强制验证
+
+| 验证模式 | 检查内容 |
+|----------|----------|
+| 标准模式 | Layer 1 必需文件从 4→5（含 dependencies.md），≥4 通过 |
+| 递归模式 | 检查 `00-project-level/dependencies.md` 是否存在 |
+| REQUIRED_FILES | 检查章节：依赖/版本/许可证/Stars，禁止 TBD/TODO/待补充，≥1 表格 |
+
+---
+
+### ✅ 验证测试
+
+- [x] Bug 修复：BashClaw 项目不再崩溃，输出 `LLM Agent` 而非 KeyError
+- [x] `--model` 参数正确写入 ANALYSIS_PLAN.md 头部和尾部
+- [x] `OPENCLAW_MODEL` 环境变量正确识别
+- [x] `project-meta.json` JSON 格式正确
+- [x] ANALYSIS_PLAN.md Phase 1 包含 `1.2 项目依赖分析 ⭐` 任务
+- [x] generate-research-plan.py 包含 `Task 2.5: 项目依赖分析`
+- [x] verify-analysis.py 正确检查 `dependencies.md` 文件
+- [x] verify-analysis.py `--recursive` 正确检查 `00-project-level/dependencies.md`
+- [x] 不传 `--model` 时默认 `unknown`，不影响运行
+
+---
+
+## 2026-07-03 - 弹性执行系统：LLM Rate Limit 自动重试 + Cron 无人值守恢复
+
+### 🎯 概述
+
+本次更新解决了核心痛点：**分析大项目时 LLM 并发/rate limit 导致 subagent 失败，主 agent 停止，分析中止，需要手动频繁 `/goal` 续传**。
+
+新增三层防线弹性执行系统，实现无人值守的分析自动重试与恢复。
+
+### 😫 问题根因
+
+```
+主 Agent 派发 8 个并行 subagent
+    ├── subagent-1 ✅ 完成
+    ├── subagent-2 ❌ rate_limit 错误
+    ├── subagent-3 ❌ rate_limit 错误
+    ├── subagent-4 ❌ context overflow
+    ...
+
+结果：部分失败，主 agent 不知道怎么重试 → 分析不完整
+更糟：主 agent context 耗尽 → 整个 session 中止
+/g goal 虽然能续传 → 需要手动触发，不是真正自动恢复
+```
+
+### ✅ 解决方案：三层防线
+
+```
+Layer 1: 任务级重试 (Subagent 内部)
+├── 每个 subagent 内部捕获 rate_limit
+├── 自主等待 + 重试（最多 3 次）
+└── 失败则在 .task-report.json 标记 status=failed
+
+Layer 2: 批次级恢复 (主 Agent 职责)
+├── sessions_yield 后检查所有 subagent 结果
+├── 对失败任务使用指数退避重试
+├── 每轮最多重试 5 次
+└── 持久化失败状态到 .resilient-checkpoint.json
+
+Layer 3: 全局续传 (Cron 自动恢复)
+├── Cron 定期运行 resilient-runner.py --auto-resume
+├── 检测失败/未完成任务
+├── 自动派发重试任务
+└── 全部完成后自动停止
+```
+
+### 📦 新增文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `scripts/resilient-runner.py` | 29KB | 🔄 弹性运行器：自动检测失败任务 + 指数退避重试（最多5次）+ 断点续传 |
+| `scripts/setup-cron-recovery.py` | 4.8KB | ⏰ Cron 自动恢复设置器：生成定时恢复 cron job 配置 |
+| `guides/RESILIENT_EXECUTION.md` | 7.8KB | 📖 弹性执行完整指南（三层防线+主 Agent 协议+退避策略+调试方法）|
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `SKILL.md` | 核心特性表格新增「🔄 弹性重试」；可用脚本表格新增 `resilient-runner.py` 和 `setup-cron-recovery.py`；执行纪律新增「弹性执行纪律」6 条；文档索引新增 `RESILIENT_EXECUTION.md` |
+
+---
+
+### 🔄 新增功能 1: 弹性运行器 (resilient-runner.py)
+
+#### 核心能力
+
+| 命令 | 功能 |
+|------|------|
+| `--init` | 从 PLAN.md 初始化检查点 |
+| `--status` | 查看分析进度（含进度条）|
+| `--sync` | 扫描输出目录，同步任务完成状态 |
+| `--auto-resume` | **核心命令**：自动检测失败任务，生成重试指令 |
+| `--json` | JSON 输出（适合 cron / 脚本集成）|
+
+#### 指数退避策略
+
+| 重试次数 | 标准延迟 | Rate Limit 延迟 |
+|----------|----------|-----------------|
+| 第 1 次 | 60s | 90s |
+| 第 2 次 | 120s | 150s |
+| 第 3 次 | 240s | 270s |
+| 第 4 次 | 480s | 510s |
+| 第 5 次 | 960s | 990s |
+| 超 5 次 | 自动降级为简化分析或跳过 | |
+
+#### 降级策略
+
+超过 5 次重试后自动降级：
+- Layer 3 文件分析 → 跳过（不影响整体）
+- Layer 2 模块分析 → 简化分析（只做概览）
+- Layer 1 项目分析 → 通知用户（必须手动处理）
+
+#### 关键特性
+
+- **幂等性**：多次运行安全，已完成任务不会重复
+- **原子写入**：检查点文件使用 `os.replace()` 保证数据完整
+- **断点续传**：所有状态持久化到 `.resilient-checkpoint.json`
+- **无人值守**：Cron 驱动，不需要主 agent context 参与
+
+---
+
+### ⏰ 新增功能 2: Cron 自动恢复
+
+#### 工作原理
+
+```
+主 Agent 派发任务 → 部分 subagent 因 rate limit 失败
+→ 主 Agent session 结束（context 耗尽或错误）
+→ Cron 定时触发 isolated session 运行 resilient-runner.py --auto-resume
+→ Runner 检测失败任务 → 重新派发 subagent
+→ 循环直到所有任务完成或超过最大重试
+```
+
+#### 配置参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| 检查间隔 | 30 分钟 | cron 定时频率 |
+| 最大重试 | 5 次 | 每个任务的尝试上限 |
+| 失败通知 | 连续 3 次 | 超过后才通知用户 |
+| 通知冷却 | 1 小时 | 避免频繁打扰 |
+| delivery | none | 静默执行，不打扰用户 |
+| lightContext | true | 轻量上下文，节省 token |
+
+#### 使用方式
+
+```bash
+# 生成 cron 配置
+python3 scripts/setup-cron-recovery.py \
+    --output-dir ~/.openclaw/learning/projects/my-project \
+    --project-path ~/opensource/my-project \
+    --plan ~/.openclaw/learning/projects/my-project/PLAN.md \
+    --interval 30
+
+# → 输出 JSON 配置，通过 cron 工具创建
+```
+
+---
+
+### 📖 新增功能 3: 弹性执行指南
+
+#### 指南内容
+
+- 完整的三层防线架构说明
+- 快速开始方案 A/B（分析前设置 / 分析中添加）
+- 主 Agent 执行协议（Phase 1-3 详细步骤）
+- Subagent 任务模板（含弹性重试指令）
+- Cron 配置模板和 AgentTurn prompt
+- 退避策略详解
+- 监控与调试 FAQ
+- 完整工作流示例
+
+---
+
+### 📊 脚本清单更新
+
+| 脚本 | 功能 | 状态 |
+|------|------|------|
+| `resilient-runner.py` | 🔄 弹性运行器 | **新增** |
+| `setup-cron-recovery.py` | ⏰ Cron 恢复设置 | **新增** |
+| `smart-analyze.py` | 智能分析入口 | 已有 |
+| `generate-research-plan.py` | 研究计划生成 | 已有 |
+| `generate-file-list.py` | 关键文件识别 | 已有 |
+| `generate-module-manifest.py` | 递归模块清单 | 已有 |
+| `recursive-orchestrator.py` | 递归编排器 v2 | 已有 |
+| `plan-tracker.py` | 计划追踪器 | 已有 |
+| `mermaid-validator.py` | Mermaid 检验器 | 已有 |
+| `detect-project-type.py` | 项目类型检测 | 已有 |
+| `detect-visualization.sh` | 可视化支持检测 | 已有 |
+| `orchestrator.py` | 自动编排执行 | 已有 |
+| `verify-analysis.py` | 验证 | 已有 |
+| `review-agent.py` | 独立审查代理 | 已有 |
+| `quick-scan.sh` | 快速扫描 | 已有 |
+
+总计 **15 个脚本**（新增 2 个）
+
+---
+
+### 📚 文档索引更新
+
+| 文档 | 状态 |
+|------|-------|
+| `guides/RESILIENT_EXECUTION.md` | **新增** — 弹性执行指南 |
+| `guides/RECURSIVE_DEEP_ANALYSIS.md` | 已有 |
+| `guides/PLAN_DRIVEN_EXECUTION.md` | 已有 |
+| `guides/MERMAID_VALIDATION.md` | 已有 |
+| `guides/DIAGRAM_GENERATION_GUIDE.md` | 已有 |
+| `guides/FILE_LEVEL_ANALYSIS.md` | 已有 |
+| `guides/DETAILED_RESEARCH_PLAN.md` | 已有 |
+| `guides/PRINCIPLE_DISTILLATION.md` | 已有 |
+| `guides/PROBLEM_DRIVEN_ANALYSIS.md` | 已有 |
+| `guides/REFERENCE_ORGANIZATION_GUIDE.md` | 已有 |
+| `guides/EXECUTION_CLOSURE.md` | 已有 |
+
+总计 **11 个引导文档**（新增 1 个）
+
+---
+
+### ✅ 验证测试
+
+- [x] `resilient-runner.py --help` 语法正确
+- [x] `--init` 从模拟 PLAN.md 正确解析 4 个任务
+- [x] `--sync` 正确检测已完成任务（1/4 完成）
+- [x] `--auto-resume` 正确识别 3 个待重试任务
+- [x] `--auto-resume --json` JSON 输出格式正确
+- [x] `setup-cron-recovery.py` 生成正确的 cron job JSON
+- [x] 检查点文件 `.resilient-checkpoint.json` 原子写入正常
+- [x] 幂等性验证：多次运行结果一致
+
+---
+
+### 🔗 相关文档
+
+- [SKILL.md](SKILL.md) - Source Analyzer 主文档
+- [guides/RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md) - 弹性执行指南
+- [scripts/resilient-runner.py](scripts/resilient-runner.py) - 弹性运行器
+- [scripts/setup-cron-recovery.py](scripts/setup-cron-recovery.py) - Cron 恢复设置器
+
+---
+
+## 2026-07-02 - 递归深度分析模式 + 计划驱动执行 + Mermaid 检验
+
+### 🎯 概述
+
+本次更新解决了核心问题：**大型/超大型项目（500+ 文件）的源码分析深度不足**。
+
+新增三大机制：
+1. **🔁 递归深度分析模式** — 对每个模块递归执行完整三层分析
+2. **📋 计划驱动执行** — PLAN.md 作为契约，检查点追踪，计划验收
+3. **🎨 Mermaid 图表检验** — 自动检测 11 类语法错误
+
+### 📦 新增文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `guides/RECURSIVE_DEEP_ANALYSIS.md` | 6KB | 递归深度分析完整指南 |
+| `guides/PLAN_DRIVEN_EXECUTION.md` | 8KB | 计划驱动执行指南（检查点+验收）|
+| `guides/MERMAID_VALIDATION.md` | 2.3KB | Mermaid 检验规则说明 |
+| `scripts/generate-module-manifest.py` | 11.7KB | 递归模块清单生成器（v2）|
+| `scripts/recursive-orchestrator.py` | 9.9KB | 递归编排器 v2（计划驱动）|
+| `scripts/plan-tracker.py` | 18.6KB | 计划追踪器（5 子命令）|
+| `scripts/mermaid-validator.py` | 22KB | Mermaid 图表语法检验器 |
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `SKILL.md` | 新增递归深度分析章节、计划驱动执行纪律、脚本列表/文档索引更新、描述更新 |
+| `scripts/verify-analysis.py` | 新增 `--recursive` 验证模式（阈值 50 文档 / 5 模块 / 80% INDEX 覆盖率）|
+| `guides/DIAGRAM_GENERATION_GUIDE.md` | 质量检查章节新增自动化检验集成 |
+
+---
+
+### 🔁 新增功能 1: 递归深度分析模式
+
+#### 设计动机
+
+最大分析模式对大型项目（如 VictoriaMetrics 267K 行 / 1052 文件）的每个模块仅 3 个文档，深度严重不足。
+
+#### 解决方案
+
+对每个模块递归执行完整三层分析，让每个模块拥有独立、深入的分析报告。
+
+#### 三阶段流程
+
+```
+Phase 1: 项目级扫描（递归识别所有模块 + 评估规模与重要性）
+Phase 2: 模块级递归（每个模块独立完整三层分析，分批并行）
+Phase 3: 项目级总结（跨模块对比 + 可移植模式提炼）
+```
+
+#### 模块重要性评估
+
+不只看规模，还看：
+- **入口文件检测**（main.go / index.ts / __init__.py 等）
+- **行数密度**（少量文件但大量代码 = 核心逻辑）
+
+评估结果分 3 级：`high` / `medium` / `low`
+
+#### 自适应分析策略
+
+| 模块规模 | 重要性 | 策略 | 预期文档 |
+|----------|--------|------|----------|
+| Large (> 100 文件) | - | 子模块递归 + 10-20 关键文件 | ~25 |
+| Medium (20-100 文件) | - | 完整三层 + 5-10 关键文件 | ~15 |
+| Small + High | high | Layer 1 + 3-5 关键文件 | ~8 |
+| Small + Low | low | Layer 1 only | ~4 |
+
+#### 递归展开
+
+`generate-module-manifest.py` 支持多层递归展开（`--max-recursion-depth`），不再只展开一层。
+
+实际测试 (VictoriaMetrics):
+- 递归识别出 **152 个模块**（之前 3 个）
+- 精确统计 **229K 行**（之前 128K，准确率 48%→86%）
+- 高重要性模块 **23 个**
+
+#### 并行控制
+
+- `--max-parallel N`：分批并行执行（默认 8）
+- `--priority-only`：只分析 high 重要性模块
+
+VM 的 152 模块可筛选为 23 个 high，4 批 × 6 并行。
+
+#### 与最大分析模式对比
+
+| 特性 | 最大分析模式 | 递归深度分析 |
+|------|--------------|--------------|
+| 模块深度 | 浅（3 文档/模块）| 深（完整三层/模块）|
+| 文件覆盖 | 部分关键文件 | 每模块独立选择关键文件 |
+| 适用规模 | 中小型项目 | 大型/超大型项目 |
+| 文档数量 | 40-80 | 100-300+ |
+| 并行度 | 中 | 高（模块级分批并行）|
+| 重要性评估 | ❌ | ✅ 自动评估 |
+| 分批控制 | ❌ | ✅ max-parallel |
+
+---
+
+### 📋 新增功能 2: 计划驱动执行
+
+#### 设计动机
+
+计划生成了但没人按计划执行，执行完了也没人检查是否偏离计划。
+
+#### 核心机制
+
+```
+生成 PLAN.md（契约）
+  → 初始化检查点 (.checkpoint.json)
+  → 按计划执行（子代理引用 Task ID + 预期输出）
+  → 每批同步检查点
+  → 子代理生成 .task-report.json
+  → 计划验收（对比预期 vs 实际）
+  → 输出 PLAN_VERIFICATION_REPORT.md
+```
+
+#### PLAN.md 结构
+
+每个任务包含 `### Task N: name [status: pending]` 格式：
+- 模块名称、路径、策略、规模、重要性
+- **预期文件清单**（验收标准）
+- 完成条件
+- sessions_spawn 命令（含计划引用和报告要求）
+
+#### 检查点追踪 (.checkpoint.json)
+
+记录每个任务的：
+- status: pending / in_progress / completed / partial / failed
+- expected_files vs actual_files
+- started_at / completed_at
+
+#### 子代理报告 (.task-report.json)
+
+每个子代理**必须**在完成后生成结构化报告：
+- status: completed / partial / failed
+- files_generated: 实际生成的文件清单
+- quality_self_score: 自评 0-100
+- key_findings: 关键发现
+- design_patterns: 设计模式
+- mermaid_diagrams: 图表数量
+
+#### plan-tracker.py 5 个子命令
+
+| 命令 | 功能 |
+|------|------|
+| `init` | 从 PLAN.md 初始化检查点 |
+| `sync` | 扫描实际输出，更新任务状态 |
+| `status` | 查看进度（含进度条）|
+| `complete` | 手动标记任务完成 |
+| `verify` | 计划验收（输出符合度报告）|
+
+#### 质量保障闭环
+
+```
+生成模块清单 → 生成 PLAN.md → 初始化检查点
+  → 按计划执行（Task ID 引用 + .task-report.json）
+  → 每批同步检查点
+  → 计划验收（预期 vs 实际对比）
+  → 标准验证 + Mermaid 检验
+  → 补救缺失
+```
+
+---
+
+### 🎨 新增功能 3: Mermaid 图表检验
+
+#### 设计动机
+
+生成的 Mermaid 图表经常有语法错误，无法渲染。
+
+#### 检验规则（11 条）
+
+**错误级别**（导致渲染失败）:
+
+| 规则 | 说明 |
+|------|------|
+| `INVALID_TYPE` | 未知的图表类型声明 |
+| `UNCLOSED_BLOCK` | 代码块未闭合 |
+| `MISSING_END` / `EXTRA_END` | subgraph/end 配对 |
+| `UNDEFINED_NODE_STYLE` | style 引用了未定义的节点 |
+| `MMDC_ERROR` | mermaid CLI 报错（可选深度验证）|
+
+**警告级别**（可能渲染异常）:
+
+| 规则 | 说明 |
+|------|------|
+| `UNESCAPED_PARENS` | 节点文本中未转义的括号 |
+| `NESTED_QUOTES` | 嵌套引号 |
+| `FULLWIDTH_CHARS` | 全角字符 |
+| `TAB_INDENT` | Tab 缩进 |
+| `INVALID_RELATION` | classDiagram 无效关系 |
+| `PARTICIPANT_SPACE` | participant 名称含空格 |
+
+#### 使用方式
+
+```bash
+# 递归检查目录
+python3 scripts/mermaid-validator.py output-dir/ --recursive
+
+# 保存报告
+python3 scripts/mermaid-validator.py output-dir/ -o MERMAID_VALIDATION_REPORT.md
+
+# 使用 mermaid CLI 深度验证
+python3 scripts/mermaid-validator.py file.md --use-mmdc
+```
+
+---
+
+### 📊 脚本清单更新
+
+| 脚本 | 功能 | 状态 |
+|------|------|------|
+| `smart-analyze.py` | 智能分析入口 | 已有 |
+| `generate-research-plan.py` | 研究计划生成 | 已有 |
+| `generate-file-list.py` | 关键文件识别 | 已有 |
+| `generate-module-manifest.py` | 🔁 递归模块清单生成 | **新增** |
+| `recursive-orchestrator.py` | 🔁 计划驱动编排器 v2 | **新增** |
+| `plan-tracker.py` | 📋 计划追踪器 | **新增** |
+| `mermaid-validator.py` | 🎨 Mermaid 检验器 | **新增** |
+| `detect-project-type.py` | 项目类型检测 | 已有 |
+| `detect-visualization.sh` | 可视化支持检测 | 已有 |
+| `orchestrator.py` | 自动编排执行 | 已有 |
+| `verify-analysis.py` | 验证（+`--recursive` 模式）| **更新** |
+| `review-agent.py` | 独立审查代理 | 已有 |
+| `quick-scan.sh` | 快速扫描 | 已有 |
+
+总计 **13 个脚本**（新增 4 个，更新 1 个）
+
+---
+
+### 📚 文档索引更新
+
+| 文档 | 状态 |
+|------|------|
+| `guides/RECURSIVE_DEEP_ANALYSIS.md` | **新增** — 递归深度分析指南 |
+| `guides/PLAN_DRIVEN_EXECUTION.md` | **新增** — 计划驱动执行指南 |
+| `guides/MERMAID_VALIDATION.md` | **新增** — Mermaid 检验规则说明 |
+| `guides/DIAGRAM_GENERATION_GUIDE.md` | **更新** — 新增自动化检验集成 |
+| `guides/FILE_LEVEL_ANALYSIS.md` | 已有 |
+| `guides/DETAILED_RESEARCH_PLAN.md` | 已有 |
+| `guides/PRINCIPLE_DISTILLATION.md` | 已有 |
+| `guides/PROBLEM_DRIVEN_ANALYSIS.md` | 已有 |
+| `guides/REFERENCE_ORGANIZATION_GUIDE.md` | 已有 |
+| `guides/EXECUTION_CLOSURE.md` | 已有 |
+
+总计 **10 个引导文档**（新增 3 个，更新 1 个）
+
+---
+
+### ✅ 验证测试
+
+- [x] VictoriaMetrics (Go, 1052 文件) — 152 模块，23 个 high 重要性
+- [x] KetaOps (Java, 16K 文件) — 73 模块，38 个 high 重要性
+- [x] 所有 12 个 Python 脚本语法正确
+- [x] PLAN.md 结构化任务格式正确（25 个 Task）
+- [x] plan-tracker 5 个子命令均可运行
+- [x] mermaid-validator 正确检测 6/6 测试图表（4 正确 + 2 错误）
+- [x] verify-analysis.py --recursive 阈值检查正确
+
+---
+
+### 🔗 相关文档
+
+- [SKILL.md](SKILL.md) - Source Analyzer 主文档
+- [guides/RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) - 递归深度分析指南
+- [guides/PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md) - 计划驱动执行指南
+- [guides/MERMAID_VALIDATION.md](guides/MERMAID_VALIDATION.md) - Mermaid 检验规则
+
+---
+
 ## 2026-06-27 - 新增核心功能分析与实现逻辑追踪
 
 ### 🎯 新增功能

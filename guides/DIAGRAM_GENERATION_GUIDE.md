@@ -225,6 +225,17 @@ flowchart TD
 - [ ] 是否基于实际代码？（不是凭空想象）
 - [ ] Mermaid 语法是否正确？（避免渲染失败）
 
+### 自动化检验
+
+```bash
+# 检验所有分析文档中的 mermaid 图表
+python3 scripts/mermaid-validator.py output-dir/ --recursive -o output-dir/MERMAID_VALIDATION_REPORT.md
+```
+
+检验规则详见 [MERMAID_VALIDATION.md](MERMAID_VALIDATION.md)
+
+**集成到验证流程**: 在 `verify-analysis.py --all` 和 `plan-tracker.py verify` 之后运行。
+
 ## 在不同模板中的应用
 
 ### 项目级分析 (00-README.md)

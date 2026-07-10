@@ -264,6 +264,7 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     lines.append("|------|--------|----------|----------|\n")
     
     lines.append("| 项目概览 | P0 | Layer 1 | 00-project-level/README.md |\n")
+    lines.append("| 项目依赖 | P0 | Layer 1 | 00-project-level/dependencies.md |\n")
     lines.append("| 架构设计 | P0 | Layer 1+2 | 00-project-level/architecture.md + 模块文档 |\n")
     
     if depth == 'file-level':
@@ -376,13 +377,28 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     lines.append("- [ ] **Step 2.5**: 写入文档\n")
     lines.append("- [ ] **Step 2.6**: 完整性验证\n\n")
     
+    lines.append("#### Task 2.5: 项目依赖分析 ⭐\n\n")
+    lines.append("**目标**: 输出 `00-project-level/dependencies.md`\n")
+    lines.append("**模板**: `templates/general/PROJECT_DEPENDENCY_ANALYSIS.md`\n\n")
+    lines.append("**输入文件**:\n")
+    lines.append("- package.json / requirements.txt / go.mod / Cargo.toml / pom.xml 等依赖声明文件\n")
+    lines.append("- 锁定文件（package-lock.json / poetry.lock / go.sum 等）\n\n")
+    lines.append("**详细步骤**:\n\n")
+    lines.append("- [ ] **Step 1**: 扫描依赖声明文件，提取完整依赖清单\n")
+    lines.append("- [ ] **Step 2**: 分类整理（核心框架 / 工具库 / 开发依赖）\n")
+    lines.append("- [ ] **Step 3**: 对关键依赖调研 Stars / 活跃度 / 许可证\n")
+    lines.append("- [ ] **Step 4**: 筛选「值得关注的优秀库」清单（⭐/⭐⭐/⭐⭐⭐）\n")
+    lines.append("- [ ] **Step 5**: 检查依赖健康度（版本新鲜度 / 风险依赖）\n")
+    lines.append("- [ ] **Step 6**: 生成依赖关系图（Mermaid）\n")
+    lines.append("- [ ] **Step 7**: 写入文档\n\n")
+    
     lines.append("---\n\n")
     
     # Phase 2: 模块级分析（如果需要）
     if depth in ['module-level', 'file-level']:
         lines.append("### Phase 2: 模块级分析\n\n")
         
-        for i, module in enumerate(modules[:5], 3):
+        for i, module in enumerate(modules[:5], 4):
             lines.append(f"#### Task {i}: {module['name']} 模块分析\n\n")
             lines.append(f"**目标**: 输出 `10-module-level/{module['name']}/` (3 个文档)\n\n")
             lines.append(f"**输入文件**:\n")
@@ -402,7 +418,7 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     if depth == 'file-level':
         lines.append("### Phase 3: 文件粒度分析\n\n")
         
-        file_task_start = 3 + len(modules[:5])
+        file_task_start = 4 + len(modules[:5])
         
         for i, file_info in enumerate(files_info[:10], file_task_start):
             lines.append(f"#### Task {i}: {file_info['file']} 文件分析\n\n")
@@ -438,7 +454,7 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     # Phase 4: 质量评估总结
     lines.append("### Phase 4: 质量评估总结\n\n")
     
-    quality_task = 3 + len(modules[:5]) + len(files_info[:10]) if depth == 'file-level' else 3 + len(modules[:5]) if depth == 'module-level' else 3
+    quality_task = 4 + len(modules[:5]) + len(files_info[:10]) if depth == 'file-level' else 4 + len(modules[:5]) if depth == 'module-level' else 4
     
     lines.append(f"#### Task {quality_task}: 项目质量评分\n\n")
     lines.append("**目标**: 输出 `00-project-level/quality-score.md`\n\n")

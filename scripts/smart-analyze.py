@@ -15,8 +15,10 @@
 
 import os
 import sys
+import json
 import argparse
 import subprocess
+from datetime import datetime
 from pathlib import Path
 
 # 导入其他脚本
@@ -32,29 +34,38 @@ def _load_module(name, filename):
 _dpt = _load_module('detect_project_type', 'detect-project-type.py')
 detect_project_type = _dpt.detect_project_type
 recommend_templates = _dpt.recommend_templates
+PROJECT_TYPE_SIGNATURES = _dpt.PROJECT_TYPE_SIGNATURES
 
 _gfl = _load_module('generate_file_list', 'generate-file-list.py')
 scan_project_files = _gfl.scan_project_files
 generate_file_list_markdown = _gfl.generate_file_list_markdown
 
-def run_analysis_plan(project_path, project_type, templates, files_info, output_dir):
+def run_analysis_plan(project_path, project_type, templates, files_info, output_dir, model_name=None):
     """生成分析执行计划"""
     lines = []
     
     lines.append(f"# {project_path.name} 智能分析计划\n\n")
     lines.append(f"> **项目类型**: {project_type}\n")
     lines.append(f"> **推荐模板**: {len(templates['templates']) + len(templates['general'])} 个\n")
-    lines.append(f"> **关键文件**: {len(files_info)} 个\n\n")
-    lines.append("---\n\n")
+    lines.append(f"> **关键文件**: {len(files_info)} 个\n")
+    if model_name:
+        lines.append(f"> **分析模型**: `{model_name}`\n")
+    lines.append("\n---\n\n")
     
     # Phase 1: 项目类型分析
-    lines.append("## Phase 1: 项目类型分析\n\n")
+    lines.append("## Phase 1: 项目级分析（必做）\n\n")
     lines.append(f"**检测到的项目类型**: {project_type}\n\n")
     
     if templates['overview']:
         lines.append(f"### 1.1 总览文档\n\n")
         lines.append(f"- [ ] 阅读 `{templates['overview']}`\n")
-        lines.append(f"- [ ] 生成 `{project_path.name}/00-OVERVIEW.md`\n\n")
+        lines.append(f"- [ ] 生成 `00-project-level/README.md`\n\n")
+    
+    lines.append(f"### 1.2 项目依赖分析 ⭐\n\n")
+    lines.append(f"- [ ] 扫描依赖声明文件（package.json / requirements.txt / go.mod / Cargo.toml 等）\n")
+    lines.append(f"- [ ] 阅读 `templates/general/PROJECT_DEPENDENCY_ANALYSIS.md`\n")
+    lines.append(f"- [ ] 生成 `00-project-level/dependencies.md`\n")
+    lines.append(f"- [ ] 筛选「值得关注的优秀库」清单\n\n")
     
     # Phase 2: 专项模板分析
     if templates['templates']:
@@ -90,17 +101,19 @@ def run_analysis_plan(project_path, project_type, templates, files_info, output_
     # 统计信息
     total_templates = len(templates['templates']) + len(templates['general'])
     total_files = len(files_info)
-    total_docs = 1 + total_templates + total_files  # overview + templates + files
-    
+    total_docs = 1 + total_templates + total_files  # overview + templates + files    
     lines.append("## 📊 分析统计\n\n")
-    lines.append(f"- **预计生成文档数**: {total_docs} 个\n")
+    lines.append(f"- **预计生成文档数**: {total_docs} 个（含 dependencies.md）\n")
     lines.append(f"  - 总览文档: 1 个\n")
     lines.append(f"  - 专项模板: {len(templates['templates'])} 个\n")
     lines.append(f"  - 通用模板: {len(templates['general'])} 个\n")
     lines.append(f"  - 文件分析: {total_files} 个\n\n")
     
     lines.append("---\n\n")
-    lines.append("*生成时间: " + subprocess.run(['date'], capture_output=True, text=True).stdout.strip() + "*\n")
+    timestamp = subprocess.run(['date'], capture_output=True, text=True).stdout.strip()
+    lines.append(f"*生成时间: {timestamp}*\n")
+    if model_name:
+        lines.append(f"*分析模型: `{model_name}`*\n")
     
     return ''.join(lines)
 
@@ -109,6 +122,7 @@ def main():
     parser.add_argument('project_path', help='项目路径')
     parser.add_argument('--output', '-o', help='输出目录（默认: ~/.openclaw/learning/projects/<project-name>/）')
     parser.add_argument('--max-files', type=int, default=30, help='最大文件数量（默认: 30）')
+    parser.add_argument('--model', '-m', help='当前分析使用的模型名（如 zai/glm-5.2）')
     
     args = parser.parse_args()
     
@@ -179,16 +193,41 @@ def main():
     print("Step 5: 生成分析计划")
     print("=" * 60)
     analysis_plan_path = output_dir / 'ANALYSIS_PLAN.md'
+    primary_name = PROJECT_TYPE_SIGNATURES.get(project_type, {}).get('name', project_type)
+    model_name = args.model or os.environ.get('OPENCLAW_MODEL', '') or 'unknown'
     analysis_plan_md = run_analysis_plan(
         project_path, 
-        detection_result['primary_name'],
+        primary_name,
         templates, 
         files_info, 
-        output_dir
+        output_dir,
+        model_name=model_name
     )
     with open(analysis_plan_path, 'w', encoding='utf-8') as f:
         f.write(analysis_plan_md)
     print(f"✅ 分析计划: {analysis_plan_path}")
+    print()
+    
+    # Step 6: 生成项目元数据
+    print("=" * 60)
+    print("Step 6: 生成项目元数据")
+    print("=" * 60)
+    meta_path = output_dir / 'project-meta.json'
+    meta = {
+        'project_name': project_name,
+        'project_path': str(project_path),
+        'project_type': primary_name,
+        'project_type_id': project_type,
+        'language': language,
+        'model': model_name,
+        'templates_count': total_templates,
+        'files_count': len(files_info),
+        'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'tool': 'source-analyzer',
+    }
+    with open(meta_path, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    print(f"✅ 项目元数据: {meta_path}")
     print()
     
     # 输出总结
@@ -200,7 +239,8 @@ def main():
     print(f"📋 分析计划: {analysis_plan_path}")
     print()
     print("📊 统计信息:")
-    print(f"   - 项目类型: {detection_result['primary_name']}")
+    print(f"   - 项目类型: {primary_name}")
+    print(f"   - 分析模型: {model_name}")
     print(f"   - 推荐模板: {total_templates} 个")
     print(f"   - 关键文件: {len(files_info)} 个")
     print(f"   - 预计文档: {1 + total_templates + len(files_info)} 个")
