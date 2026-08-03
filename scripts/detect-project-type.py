@@ -103,6 +103,38 @@ PROJECT_TYPE_SIGNATURES = {
         ],
         'weight': 0.8
     },
+    'agent-skill': {
+        'name': 'Agent Skill',
+        'keywords': [
+            # 高特异性关键词（Agent Skill 独有）
+            'skill', 'skilling', 'harness', 'claude code', 'cursor rules',
+            'when_to_use', 'when not to invoke', 'anti-rationalization',
+            'instruction priority', 'trigger', 'lazy load',
+            'context budget', 'token budget', 'context engineering',
+            'sub-agent', 'subagent', 'fork', 'isolation',
+            'delegation', 'orchestration', 'coordinator',
+            'mini-skill', 'skill suite', 'skill manifest',
+            '.claude/commands', '.cursor/rules', 'clinerules',
+            'openclaw skill', 'agent skill', 'coding agent',
+            'prompt engineering', 'system prompt', 'tool calling',
+            'eval', 'follow rate', 'compliance rate',
+            'bootstrap', 'hook lifecycle', 'permission gate',
+            'memory persistence', 'task decomposition',
+        ],
+        'file_patterns': [
+            'skill.md', 'manifest.md', 'agents.md', 'claude.md',
+            'when_to_use', 'trigger', 'harness', 'eval',
+        ],
+        'dir_patterns': [
+            'skills', '.claude', '.cursor', 'references',
+            'commands', 'agents', 'evals', 'prompts',
+        ],
+        'config_patterns': [
+            'skill', 'claude', 'cursor', 'openclaw',
+            'metadata.json', 'manifest',
+        ],
+        'weight': 1.3,  # 高权重，高特异性关键词
+    },
     'pipeline': {
         'name': 'Pipeline/工作流',
         'keywords': [
@@ -175,6 +207,26 @@ TEMPLATE_RECOMMENDATIONS = {
         ],
         'general': [
             'templates/general/PIPELINE_WORKFLOW_ANALYSIS.md',
+            'templates/general/INTEGRATION_ECOSYSTEM.md',
+            'templates/general/FEATURE_TRADEOFF_ANALYSIS.md',
+        ]
+    },
+    'agent-skill': {
+        'overview': 'templates/agent-skill/SKILL_ANALYSIS_OVERVIEW.md',
+        'templates': [
+            'templates/agent-skill/SKILL_01_ARCHITECTURE.md',
+            'templates/agent-skill/SKILL_02_TRIGGER_ROUTING.md',
+            'templates/agent-skill/SKILL_03_INSTRUCTION_ENGINEERING.md',
+            'templates/agent-skill/SKILL_04_CONTEXT_MANAGEMENT.md',
+            'templates/agent-skill/SKILL_05_TOOL_INTEGRATION.md',
+            'templates/agent-skill/SKILL_06_COMPOSITION_ORCHESTRATION.md',
+            'templates/agent-skill/SKILL_07_PLATFORM_ADAPTATION.md',
+            'templates/agent-skill/SKILL_08_QUALITY_TESTING.md',
+            'templates/agent-skill/SKILL_09_OBSERVABILITY.md',
+            'templates/agent-skill/SKILL_10_EVOLUTION_GOVERNANCE.md',
+        ],
+        'general': [
+            'templates/general/SYSTEM_APPRECIATION_TEMPLATE.md',
             'templates/general/INTEGRATION_ECOSYSTEM.md',
             'templates/general/FEATURE_TRADEOFF_ANALYSIS.md',
         ]
@@ -336,8 +388,65 @@ def detect_project_type(project_path):
     }
 
 def recommend_templates(project_type):
-    """推荐分析模板"""
+    """推荐分析模板（单类型）"""
     return TEMPLATE_RECOMMENDATIONS.get(project_type, TEMPLATE_RECOMMENDATIONS['general'])
+
+def recommend_templates_multi(detection_result):
+    """
+    多类型模板推荐 — 合并主类型和次要类型的模板，去重
+    
+    返回结构:
+    {
+        'types': [('agent-skill', 'Agent Skill', score), ('llm-agent', 'LLM Agent', score), ...],
+        'overviews': ['templates/agent-skill/SKILL_ANALYSIS_OVERVIEW.md', ...],
+        'templates': [...],  # 合并去重后的专项模板
+        'general': [...],    # 合并去重后的通用模板
+    }
+    """
+    primary = detection_result['primary']
+    primary_score = detection_result['primary_score']
+    secondary = detection_result.get('secondary', [])
+    
+    # 收集所有命中的类型（主类型 + 达到阈值的次要类型）
+    active_types = [(primary, PROJECT_TYPE_SIGNATURES.get(primary, {}).get('name', primary), primary_score)]
+    for ptype, score in secondary:
+        active_types.append((ptype, PROJECT_TYPE_SIGNATURES.get(ptype, {}).get('name', ptype), score))
+    
+    # 合并模板，用 set 去重
+    seen_overviews = set()
+    seen_templates = set()
+    seen_general = set()
+    
+    merged_overviews = []
+    merged_templates = []
+    merged_general = []
+    
+    for ptype, pname, score in active_types:
+        rec = TEMPLATE_RECOMMENDATIONS.get(ptype, TEMPLATE_RECOMMENDATIONS['general'])
+        
+        # overview
+        if rec.get('overview') and rec['overview'] not in seen_overviews:
+            merged_overviews.append(rec['overview'])
+            seen_overviews.add(rec['overview'])
+        
+        # 专项模板
+        for t in rec.get('templates', []):
+            if t not in seen_templates:
+                merged_templates.append(t)
+                seen_templates.add(t)
+        
+        # 通用模板
+        for t in rec.get('general', []):
+            if t not in seen_general:
+                merged_general.append(t)
+                seen_general.add(t)
+    
+    return {
+        'types': active_types,
+        'overviews': merged_overviews,
+        'templates': merged_templates,
+        'general': merged_general,
+    }
 
 def generate_report(project_path, detection_result, recommend_templates_flag):
     """生成检测报告"""
@@ -386,51 +495,81 @@ def generate_report(project_path, detection_result, recommend_templates_flag):
     if recommend_templates_flag:
         lines.append("## 📚 推荐分析模板\n\n")
         
-        templates = recommend_templates(primary)
+        # 使用多类型合并模板
+        multi = recommend_templates_multi(detection_result)
         
-        if templates['overview']:
-            lines.append(f"### 总览文档\n\n")
-            lines.append(f"- `{templates['overview']}`\n\n")
+        # 显示所有命中的类型
+        if len(multi['types']) > 1:
+            lines.append(f"> ⚠️ **多类型命中** — 该项目同时具备多种特征，将合并多组专项模板\n\n")
+            
+            lines.append("### 命中的项目类型\n\n")
+            lines.append("| 类型 | 得分 | 角色 |\n")
+            lines.append("|------|------|------|\n")
+            for i, (ptype, pname, score) in enumerate(multi['types']):
+                role = "主类型" if i == 0 else "次要类型"
+                lines.append(f"| {pname} (`{ptype}`) | {score:.1f} | {role} |\n")
+            lines.append("\n")
         
-        if templates['templates']:
-            lines.append(f"### 专项模板 ({len(templates['templates'])} 个)\n\n")
-            for t in templates['templates']:
+        if multi['overviews']:
+            lines.append(f"### 总览文档 ({len(multi['overviews'])} 个)\n\n")
+            for o in multi['overviews']:
+                lines.append(f"- `{o}`\n")
+            lines.append("\n")
+        
+        if multi['templates']:
+            lines.append(f"### 专项模板 ({len(multi['templates'])} 个)\n\n")
+            for t in multi['templates']:
                 lines.append(f"- `{t}`\n")
             lines.append("\n")
         
-        if templates['general']:
-            lines.append(f"### 通用模板 ({len(templates['general'])} 个)\n\n")
-            for t in templates['general']:
+        if multi['general']:
+            lines.append(f"### 通用模板 ({len(multi['general'])} 个)\n\n")
+            for t in multi['general']:
                 lines.append(f"- `{t}`\n")
             lines.append("\n")
         
-        total_count = len(templates['templates']) + len(templates['general'])
-        lines.append(f"**总计**: {total_count} 个模板\n\n")
-        lines.append("---\n\n")
+        total_count = len(multi['templates']) + len(multi['general'])
+        lines.append(f"**总计**: {total_count} 个模板（{len(multi['overviews'])} 个总览 + {len(multi['templates'])} 个专项 + {len(multi['general'])} 个通用）\n")
+        
+        if len(multi['types']) > 1:
+            lines.append(f"\n> 💡 **多类型策略**: 建议为每个命中类型生成完整的专项分析文档组，输出到 `30-specialized/` 下按子目录组织。\n")
+        
+        lines.append("\n---\n\n")
     
     # 分析建议
     lines.append("## 💡 分析建议\n\n")
     
-    if primary == 'llm-agent':
-        lines.append("1. **重点关注**: Agent 架构、LLM 集成、记忆系统、工具系统、Agent 框架选型\n")
-        lines.append("2. **核心文件**: Agent/Tool/Memory/Prompt 相关文件\n")
-        lines.append("3. **分析模式**: 建议启用最大分析模式（40-80+ 文档）\n")
-    elif primary == 'database':
-        lines.append("1. **重点关注**: 存储引擎、索引设计、查询处理、事务管理\n")
-        lines.append("2. **核心文件**: Storage/Index/Query/Transaction 相关文件\n")
-        lines.append("3. **分析模式**: 建议启用最大分析模式（40-80+ 文档）\n")
-    elif primary == 'fullstack-web':
-        lines.append("1. **重点关注**: 前后端架构、路由设计、数据流、部署架构\n")
-        lines.append("2. **核心文件**: 路由/组件/API/Worker 相关文件\n")
-        lines.append("3. **分析模式**: 建议启用最大分析模式（40-60+ 文档）\n")
-    elif primary == 'pipeline':
-        lines.append("1. **重点关注**: Pipeline 设计、状态管理、错误处理、并发控制\n")
-        lines.append("2. **核心文件**: Pipeline/Worker/Queue/Task 相关文件\n")
-        lines.append("3. **分析模式**: 建议启用最大分析模式（30-50+ 文档）\n")
-    else:
-        lines.append("1. **重点关注**: 架构设计、核心模块、代码质量\n")
-        lines.append("2. **核心文件**: 入口点/核心类/高频修改文件\n")
-        lines.append("3. **分析模式**: 根据项目规模选择分析深度\n")
+    # 使用多类型结果
+    multi = recommend_templates_multi(detection_result)
+    active_types = multi['types']
+    
+    if len(active_types) > 1:
+        lines.append(f"该项目命中 **{len(active_types)} 种类型**，建议采用多类型组合分析策略：\n\n")
+    
+    advice_map = {
+        'llm-agent': ("Agent 架构、LLM 集成、记忆系统、工具系统、Agent 框架选型", "Agent/Tool/Memory/Prompt 相关文件", "LLM Agent 专项（11 维度）"),
+        'agent-skill': ("Skill 架构、触发路由、指令工程、上下文管理、平台适配", "SKILL.md/metadata.json/references/evals 相关文件", "Agent Skill 专项（10 维度）"),
+        'database': ("存储引擎、索引设计、查询处理、事务管理", "Storage/Index/Query/Transaction 相关文件", "数据库专项（10 维度）"),
+        'fullstack-web': ("前后端架构、路由设计、数据流、部署架构", "路由/组件/API/Worker 相关文件", "Web 应用分析"),
+        'pipeline': ("Pipeline 设计、状态管理、错误处理、并发控制", "Pipeline/Worker/Queue/Task 相关文件", "Pipeline 分析"),
+        'general': ("架构设计、核心模块、代码质量", "入口点/核心类/高频修改文件", "通用分析"),
+    }
+    
+    for i, (ptype, pname, score) in enumerate(active_types):
+        focus, files, template_name = advice_map.get(ptype, advice_map['general'])
+        role = "主类型" if i == 0 else "次要类型"
+        lines.append(f"### {pname}（{role}，{score:.1f} 分）\n\n")
+        lines.append(f"1. **重点关注**: {focus}\n")
+        lines.append(f"2. **核心文件**: {files}\n")
+        lines.append(f"3. **专项模板**: {template_name}\n\n")
+    
+    if len(active_types) > 1:
+        total_specialized = len(multi['templates'])
+        lines.append(f"### 多类型组合策略\n\n")
+        lines.append(f"- **专项文档总数**: {total_specialized} 个（合并去重后）\n")
+        lines.append(f"- **输出组织**: 每种类型独立子目录，如 `30-specialized/llm-agent/` 和 `30-specialized/agent-skill/`\n")
+        lines.append(f"- **分析优先级**: 先主类型后次要类型，主类型全量分析，次要类型按需选取关键维度\n")
+        lines.append(f"- **跨类型关联**: 注意不同类型特征之间的交叉点（如数据库项目中的 AI 查询优化器）\n")
     
     lines.append("\n---\n\n")
     
@@ -465,6 +604,8 @@ def main():
     
     if detection_result['secondary']:
         print(f"   次要类型: {', '.join([PROJECT_TYPE_SIGNATURES[t]['name'] for t, _ in detection_result['secondary']])}")
+        multi = recommend_templates_multi(detection_result)
+        print(f"   模板合并: {len(multi['templates'])} 个专项 + {len(multi['general'])} 个通用（多类型去重后）")
     
     # 生成报告
     report = generate_report(project_path, detection_result, args.recommend_templates)

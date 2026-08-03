@@ -14,7 +14,7 @@
     python3 generate-research-plan.py /path/to/project \
         --depth file-level \
         --max-files 30 \
-        -o ~/.openclaw/learning/projects/project-name/RESEARCH_PLAN.md
+        -o $OUTPUT_BASE/project-name/RESEARCH_PLAN.md
 """
 
 import os
@@ -240,7 +240,7 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     lines.append(f"**研究目标**: 深度分析 {project_name} 源码架构 + 核心实现\n")
     lines.append(f"**项目路径**: `{project_path}`\n")
     lines.append(f"**技术栈**: {pre_results['language']}\n")
-    lines.append(f"**输出目录**: `~/.openclaw/learning/projects/{project_name}/`\n")
+    lines.append(f"**输出目录**: `$OUTPUT_BASE/{project_name}/`\n")
     lines.append(f"**计划版本**: v1.0\n")
     
     estimated_time = estimate_analysis_time(len(files_info), len(modules), depth)

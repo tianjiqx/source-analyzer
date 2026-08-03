@@ -1,5 +1,341 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-08-03 - 运行时环境适配层 + LLM Agent 模板扩展
+
+### 🎯 概述
+
+本次更新实现核心架构升级：
+1. **环境适配层**：Skill 分析逻辑与执行机制分离，支持多运行环境（OpenClaw / opencode / CLI）
+2. **LLM Agent 模板扩展**：从 11 维度扩展到完整体系，新增上下文工程、工具系统、约束系统、规划推理、验证自愈、多代理、可观测性、评估框架等专项分析
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `SKILL.md` | 新增「🔌 运行时环境适配」章节（环境检测、适配层、行为指令、路径变量）；特性表新增环境适配；Goal 章节更新路径变量 |
+| `scripts/smart-analyze.py` | 适配环境无关设计，支持多运行环境 |
+| `scripts/goal-tracker.py` | 路径参数改为环境变量 |
+| `scripts/orchestrator.py` | 适配层集成 |
+| `scripts/recursive-orchestrator.py` | PLAN.md 生成使用行为指令标签 |
+| `scripts/resilient-runner.py` | 环境无关任务派发指令 |
+| `scripts/setup-cron-recovery.py` | 通用调度配置生成 |
+| `scripts/generate-analysis-plan.py` | 适配层支持 |
+| `guides/*.md` | 多个指南文档更新适配层说明 |
+
+### 📦 新增文件
+
+#### runtime/ 目录（环境适配层）
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `runtime/adapter.md` | 5.8KB | 运行时环境适配协议：三层分离架构（意图/行为/能力）、环境检测协议、行为指令语法、能力接口定义 |
+| `runtime/environments/openclaw.md` | 2.9KB | OpenClaw 环境适配：sessions_spawn/cron/NO_REPLY 映射 |
+| `runtime/environments/opencode.md` | 2.6KB | opencode 环境适配：Task tool/系统 crontab/空输出映射 |
+
+#### templates/llm-agent/ 扩展（新增 8 个文件）
+
+| 文件 | 说明 |
+|------|------|
+| `LLM_AGENT_03_CONTEXT_ENGINEERING.md` | 上下文工程：Token 预算、延迟加载、压缩隔离、上下文窗口优化 |
+| `LLM_AGENT_04_TOOL_SYSTEM.md` | 工具系统：工具声明、权限管道、安全边界、工具调用优化 |
+| `LLM_AGENT_05_PLANNING_REASONING.md` | 规划与推理：任务分解、规划算法、推理链、决策树 |
+| `LLM_AGENT_06_CONSTRAINT_SYSTEM.md` | 约束系统：约束分级（MUST/SHOULD/PREFER）、反理性化、遵循度保障 |
+| `LLM_AGENT_08_VERIFICATION_SELF_HEALING.md` | 验证与自愈：输出验证、错误检测、自动修复、闭环验证 |
+| `LLM_AGENT_09_MULTI_AGENT.md` | 多代理协作：Agent 间通信、协作模式、编排策略、子代理管理 |
+| `LLM_AGENT_10_OBSERVABILITY.md` | 可观测性：追踪模型、失败诊断、性能监控、日志分析 |
+| `LLM_AGENT_11_EVALUATION_FRAMEWORK.md` | 评估框架：评估指标、测试方法、基准测试、质量度量 |
+
+#### 其他新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `scripts/path_utils.py` | 路径工具函数（环境变量解析） |
+| `DEPENDENCY_ANALYSIS_AUDIT.md` | 依赖分析审计文档 |
+
+### 🔌 新增功能 1: 运行时环境适配层
+
+#### 核心架构
+
+```
+┌─────────────────────────────────────────────┐
+│            SKILL.md (环境无关)               │
+│  分析方法论 · 模板 · 质量标准 · 输出规范      │
+├─────────────────────────────────────────────┤
+│         runtime/adapter.md (适配层)          │
+│  能力检测 · 任务派发 · 进度追踪 · 恢复机制    │
+├─────────────────────────────────────────────┤
+│   环境实现 (可选/可扩展)                      │
+│  ├── openclaw.md   (sessions_spawn/cron)    │
+│  ├── opencode.md   (Task tool/进程)          │
+│  └── standalone.md (纯 CLI/无并行)           │
+└─────────────────────────────────────────────┘
+```
+
+#### 三层分离原则
+
+| 层级 | 职责 | 环境相关性 |
+|------|------|----------|
+| **Layer 1: 意图** | 分析逻辑、模板、质量标准 | 环境无关 |
+| **Layer 2: 行为** | 任务派发、进度追踪接口 | 抽象接口 |
+| **Layer 3: 能力** | 具体实现（OpenClaw/opencode/CLI） | 环境特定 |
+
+#### 行为指令标签
+
+Skill 中使用环境无关的行为指令，适配层翻译为具体实现：
+
+| 指令 | 含义 | OpenClaw 实现 | opencode 实现 |
+|------|------|---------------|---------------|
+| `[DISPATCH: ...]` | 派发子任务 | sessions_spawn | Task tool |
+| `[WAIT: ...]` | 等待批次完成 | sessions_yield | Task join |
+| `[SCHEDULE: ...]` | 定时恢复 | cron job | 系统 crontab |
+| `[NOTIFY_SILENT]` | 静默返回 | NO_REPLY | 空输出 |
+
+#### 环境检测协议
+
+优先级：用户显式声明 > 工具可用性 > 环境探测 > 默认降级
+
+#### 路径变量
+
+| 变量 | 含义 | OpenClaw 默认 |
+|------|------|---------------|
+| `$SKILL_DIR` | Skill 根目录 | `~/.openclaw/workspace/skills/source-analyzer` |
+| `$OUTPUT_BASE` | 分析输出基目录 | `~/.openclaw/learning/projects` |
+| `$WORKSPACE` | 工作区根 | `~/.openclaw/workspace` |
+
+### 🧩 新增功能 2: LLM Agent 模板体系扩展
+
+#### 原有维度（11 个）
+
+1. 架构设计
+2. LLM 集成
+3. 记忆系统
+...
+
+#### 新增维度（8 个）
+
+| # | 维度 | 核心关切 |
+|---|------|----------|
+| 03 | 上下文工程 | Token 预算？延迟加载？压缩隔离？ |
+| 04 | 工具系统 | 工具声明？权限控制？安全边界？ |
+| 05 | 规划与推理 | 任务分解？规划算法？推理链？ |
+| 06 | 约束系统 | 约束分级？反理性化？遵循度保障？ |
+| 08 | 验证与自愈 | 输出验证？错误检测？自动修复？ |
+| 09 | 多代理协作 | Agent 间通信？协作模式？编排策略？ |
+| 10 | 可观测性 | 追踪模型？失败诊断？性能监控？ |
+| 11 | 评估框架 | 评估指标？测试方法？质量度量？ |
+
+#### 完整 LLM Agent 分析体系
+
+现支持 **19+ 维度**的完整分析：
+
+- **架构层**：架构设计、模块组织、依赖管理
+- **认知层**：LLM 集成、记忆系统、上下文工程、规划推理
+- **能力层**：工具系统、约束系统、验证自愈
+- **协作层**：多代理协作、人机协作
+- **运维层**：可观测性、性能优化、安全对齐
+- **质量层**：评估框架、测试方法
+
+### ✅ 验证测试
+
+- [x] runtime/adapter.md 三层架构设计完成
+- [x] runtime/environments/openclaw.md 适配文件创建
+- [x] runtime/environments/opencode.md 适配文件创建
+- [x] SKILL.md 环境适配章节新增
+- [x] 路径变量替换（$SKILL_DIR/$OUTPUT_BASE/$WORKSPACE）
+- [x] LLM Agent 模板扩展（8 个新维度）
+- [x] 脚本适配层集成（smart-analyze/goal-tracker/orchestrator 等）
+- [x] 行为指令标签语法定义
+
+---
+
+## 2026-07-12 - 中文输出约束 + Agent Skill 专项分析模板
+
+### 🎯 概述
+
+本次更新解决两个问题：
+1. **输出语言不统一**：分析文档中英文混杂，缺少明确的输出语言约束
+2. **缺少 Skill 项目专项模板**：`~/opensource` 下有大量 agent skill 项目（agent-skills、code-agent-skills、agentic-harness-patterns-skill、pm-skills、Skill_Seekers 等），现有模板（LLM Agent / 数据库 / 基础设施）不覆盖 Skill 项目特有关切点
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `SKILL.md` | 新增「📝 基础约束」段落（中文输出）；description 新增 Agent Skill；特性表新增 Agent Skill（10维度）；项目类型识别表新增 Agent Skill；专项模板章节新增 🧩 Agent Skill 专项（10维度）；文档索引新增 Agent Skill 模板表（11个）|
+| `scripts/detect-project-type.py` | 新增 `agent-skill` 类型签名（关键词/文件/目录/配置模式，weight=1.3）；模板推荐映射新增 `agent-skill`；分析建议新增 Agent Skill 分支 |
+
+### 📦 新增文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `templates/agent-skill/SKILL_ANALYSIS_OVERVIEW.md` | 8.6KB | Agent Skill 专项分析总览：类型分类（单体/套件/平台/领域）、目标平台兼容性矩阵、核心能力模型、分析流程 |
+| `templates/agent-skill/SKILL_01_ARCHITECTURE.md` | 4.2KB | Skill 架构设计：组织形式、目录结构、层级设计、清单管理、元数据、5 种常见架构模式 |
+| `templates/agent-skill/SKILL_02_TRIGGER_ROUTING.md` | 3.8KB | 触发与路由：发现策略（关键词/语义/意图/显式/预算约束）、优先级仲裁、反理性化机制 |
+| `templates/agent-skill/SKILL_03_INSTRUCTION_ENGINEERING.md` | 4.5KB | 指令工程：SKILL.md 结构模式、6 维质量评估、约束分级（MUST/SHOULD/PREFER）、反理性化体系、指令优先级 |
+| `templates/agent-skill/SKILL_04_CONTEXT_MANAGEMENT.md` | 4.7KB | 上下文管理：Token 预算模型、延迟加载、内联 vs 隔离执行、上下文工程四操作（Select/Write/Compress/Isolate）|
+| `templates/agent-skill/SKILL_05_TOOL_INTEGRATION.md` | 3.2KB | 工具集成：声明方式、权限管道、安全检查清单（7 项风险等级检测）|
+| `templates/agent-skill/SKILL_06_COMPOSITION_ORCHESTRATION.md` | 3.4KB | 组合与编排：6 种 Skill 间关系、3 种编排模式（Coordinator/Fork/Swarm）、子代理委派、4 种任务分解策略 |
+| `templates/agent-skill/SKILL_07_PLATFORM_ADAPTATION.md` | 3.2KB | 平台适配：6 平台兼容性矩阵、L0-L4 依赖分级、跨平台迁移成本评估 |
+| `templates/agent-skill/SKILL_08_QUALITY_TESTING.md` | 3.2KB | 质量与测试：6 维质量评估、6 种测试类型、遵循度量化方法 |
+| `templates/agent-skill/SKILL_09_OBSERVABILITY.md` | 3.7KB | 可观测性：三层追踪模型、7 种失败模式分类、6 个关键性能指标 |
+| `templates/agent-skill/SKILL_10_EVOLUTION_GOVERNANCE.md` | 3.1KB | 演进与治理：4 种版本策略、5 维兼容性管理、Skill 生命周期（创建→审核→发布→废弃）|
+
+### 🔧 新增功能 1: 基础约束 — 中文输出
+
+在 SKILL.md 执行注意事项之前新增全局约束段落：
+
+- **输出语言：中文** — 所有分析文档一律中文（含项目级/模块级/文件级/专项/跨模块/元文档/Mermaid 标签）
+- 专有名词、类名、函数名、技术术语保留英文原文
+- **代码引用** — 保留原始英文代码，配以中文解释
+
+### 🧩 新增功能 2: Agent Skill 专项分析模板（10 维度）
+
+#### 设计依据
+
+结合以下经验提炼分析维度：
+
+| 来源 | 贡献 |
+|------|------|
+| `agentic-harness-patterns` 分析 | 六大 Harness 层（Memory/Skills/Tools/Context/Multi-agent/Lifecycle）|
+| `superpowers` 分析（14 Skill 模块）| Skill 套件组织、生命周期型架构、检查清单验证 |
+| `agent-skills` / `code-agent-skills` | Mini 全能型、Skill 清单管理、反理性化设计 |
+| `pm-skills` / `Skill_Seekers` | 领域 Skill 包、平台适配、多平台支持 |
+
+#### 10 维度设计
+
+| # | 维度 | 核心关切 |
+|---|------|----------|
+| 01 | 架构设计 | Skill 如何组织？单体/套件？清单管理？ |
+| 02 | 触发与路由 | 意图→Skill 映射？优先级仲裁？反理性化？ |
+| 03 | 指令工程 | Prompt 结构？约束分级？遵循度保障？ |
+| 04 | 上下文管理 | Token 预算？延迟加载？压缩隔离？ |
+| 05 | 工具集成 | 工具声明？权限控制？安全边界？ |
+| 06 | 组合与编排 | Skill 间协作？并行编排？子代理委派？ |
+| 07 | 平台适配 | 多平台支持？供应商锁定？迁移成本？ |
+| 08 | 质量与测试 | Eval 框架？遵循度评估？回归检测？ |
+| 09 | 可观测性 | 执行追踪？Token 监控？失败诊断？ |
+| 10 | 演进与治理 | 版本管理？兼容性？贡献规范？ |
+
+#### 与传统代码分析的关键差异
+
+| 维度 | 传统代码库 | Agent Skill 项目 |
+|------|-----------|-----------------|
+| 执行引擎 | CPU / VM | LLM |
+| 核心产物 | 可执行二进制 | 指令文档 (SKILL.md) |
+| 质量指标 | 性能 / 覆盖率 | 遵循度 / 触发准确率 |
+| 依赖管理 | 包管理器 | 元数据声明 |
+| 测试方式 | 单元测试 | Eval / 场景回放 |
+| 组合方式 | 函数调用 | 意图路由 + 会话上下文 |
+
+### 🔍 新增功能 3: 项目类型检测 — Agent Skill 识别
+
+#### 签名设计
+
+| 信号类型 | 特征示例 |
+|----------|----------|
+| keywords | `skill`, `harness`, `when_to_use`, `anti-rationalization`, `context budget`, `sub-agent`, `lazy load` (30+ 个) |
+| file_patterns | `skill.md`, `manifest.md`, `agents.md`, `claude.md`, `eval` |
+| dir_patterns | `skills/`, `.claude/`, `.cursor/`, `references/`, `evals/`, `commands/` |
+| config_patterns | `skill`, `claude`, `cursor`, `openclaw`, `metadata.json`, `manifest` |
+| weight | 1.3（高特异性，高于 llm-agent 的 1.2）|
+
+#### 验证结果
+
+| 测试项目 | 识别结果 | 置信度 |
+|----------|----------|--------|
+| `agent-skills` | ✅ Agent Skill | 289.6 |
+| `code-agent-skills` | ✅ Agent Skill | 正确识别 |
+| `agentic-harness-patterns-skill` | ✅ Agent Skill | 正确识别 |
+| `pm-skills` | ✅ Agent Skill | 正确识别 |
+| `Skill_Seekers` | ✅ Agent Skill | 正确识别 |
+| `doris`（对照组）| ✅ 数据库 | 正确识别 |
+
+### ✅ 验证测试
+
+- [x] `templates/agent-skill/` 下 11 个文件全部创建完成
+- [x] SKILL.md description/特性表/类型识别表/专项章节/文档索引全部更新
+- [x] detect-project-type.py 新增 agent-skill 签名，5 个 skill 项目全部正确识别
+- [x] 非 skill 项目（doris）不受影响，仍正确识别为 database
+
+### 🔀 新增功能 4: 多类型组合分析
+
+#### 核心问题
+
+一个项目可能同时具备多种类型特征（如 Skill 项目包含 LLM Agent 集成、数据库项目内置 AI 能力），之前只取主类型模板，次要类型的专项分析被忽略。
+
+#### 解决方案
+
+| 改动 | 说明 |
+|------|--------|
+| `detect-project-type.py` 新增 `recommend_templates_multi()` | 合并主类型 + 次要类型的模板，去重后返回 |
+| `detect-project-type.py` 报告生成 | 多类型时显示命中类型表 + 组合分析策略建议 |
+| `smart-analyze.py` 分析计划生成 | 多类型时 Phase 2 按类型分组，输出到 `30-specialized/<type>/` 子目录 |
+| `smart-analyze.py` project-meta.json | 新增 `project_types_all` 数组 + `multi_type` 标记 |
+| `SKILL.md` 项目类型章节 | 新增「🔀 多类型组合分析」段落 |
+
+#### 检测阈值
+
+- 主类型: 得分 > 10
+- 次要类型命中: 得分 > 主类型 × 50% **且** 得分 > 5
+
+#### 模板合并逻辑
+
+```
+recommend_templates_multi(detection_result)
+  → 遍历所有命中类型
+  → 合并 overview + templates + general
+  → 去重（同一模板不重复出现）
+  → 返回合并后的模板清单
+```
+
+#### 输出目录组织（多类型）
+
+```
+30-specialized/
+├── agent-skill/              # 主类型专项
+│   ├── SKILL_01_ARCHITECTURE.md
+│   └── ...
+├── llm-agent/                # 次要类型专项
+│   ├── LLM_AGENT_01_ARCHITECTURE.md
+│   └── ...
+└── fullstack-web/            # 次要类型专项（如命中）
+    └── ...
+```
+
+#### 验证结果
+
+| 测试项目 | 命中类型数 | 模板合并 |
+|----------|-----------|----------|
+| Skill_Seekers | 3（Agent Skill + LLM Agent + Web）| 22 专项 + 5 通用 + 2 总览 |
+| agent-skills | 1（Agent Skill）| 10 专项 + 3 通用 |
+| agentic-harness-patterns | 1（Agent Skill）| 10 专项 + 3 通用 |
+| autoresearch | 2（General + Pipeline）| 1 专项 + 5 通用 |
+| mem0 | 1（LLM Agent）| 11 专项 + 4 通用 |
+| doris | 1（Database）| 10 专项 + 2 通用（对照组）|
+
+#### project-meta.json 示例（多类型）
+
+```json
+{
+  "project_type": "Agent Skill",
+  "project_types_all": [
+    {"type": "agent-skill", "name": "Agent Skill", "score": 770.3, "role": "primary"},
+    {"type": "llm-agent", "name": "LLM Agent", "score": 510.4, "role": "secondary"},
+    {"type": "fullstack-web", "name": "全栈 Web 应用", "score": 456.0, "role": "secondary"}
+  ],
+  "multi_type": true
+}
+```
+
+### ✅ 验证测试（追加）
+
+- [x] `recommend_templates_multi()` 正确合并去重多类型模板
+- [x] Skill_Seekers 命中 3 种类型，22 个专项模板合并
+- [x] smart-analyze.py 多类型时 ANALYSIS_PLAN.md 显示类型表 + 分组模板
+- [x] project-meta.json 正确记录多类型信息
+- [x] 单类型项目不受影响（agent-skills 仍为 1 类型 10 模板）
+
+---
+
 ## 2026-07-07 - 模型追踪 + 项目依赖分析（发现优秀第三方库）+ Bug 修复
 
 ### 🎯 概述

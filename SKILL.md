@@ -1,6 +1,6 @@
 ---
 name: source-analyzer
-description: 开源项目源码分析系统化工作流。支持三层渐进式分析（项目级→模块级→文件粒度）和递归深度分析模式（大型项目模块级递归）。专项模板（LLM Agent/数据库/基础设施），自动生成 Mermaid 图表。
+description: 开源项目源码分析系统化工作流。支持三层渐进式分析（项目级→模块级→文件粒度）和递归深度分析模式（大型项目模块级递归）。专项模板（LLM Agent/Agent Skill/数据库/基础设施），自动生成 Mermaid 图表。环境无关设计，通过运行时适配层支持多平台。
 metadata: {"openclaw":{"emoji":"🔬"}}
 ---
 
@@ -8,18 +8,56 @@ metadata: {"openclaw":{"emoji":"🔬"}}
 
 开源项目源码分析的系统化工作流。
 
+## 🔌 运行时环境适配
+
+> **本 Skill 环境无关。** 分析方法论与执行机制分离，通过适配层接入不同运行环境。
+
+**加载时自动检测**：agent 首次使用此 skill 时，检测当前运行环境并加载对应适配层。
+
+| 环境 | 适配文件 | 并行 | 定时恢复 | 静默协议 |
+|------|----------|------|----------|----------|
+| **OpenClaw** | [`runtime/environments/openclaw.md`](runtime/environments/openclaw.md) | sessions_spawn | cron + isolated | NO_REPLY |
+| **opencode / 其他** | [`runtime/environments/opencode.md`](runtime/environments/opencode.md) | Task tool / 子进程 | 系统 crontab | 空输出 |
+| **纯 CLI** | （内置串行模式） | ❌ 串行 | 系统 crontab | N/A |
+
+**适配协议规范**: [`runtime/adapter.md`](runtime/adapter.md)
+
+### 行为指令（环境无关）
+
+Skill 中使用以下行为指令标签，适配层负责翻译为具体实现：
+
+| 指令 | 含义 | 必须 |
+|------|------|------|
+| `[DISPATCH: ...]` | 派发一个分析子任务 | ✅ |
+| `[WAIT: ...]` | 等待当前批次完成 | ✅ |
+| `[SCHEDULE: ...]` | 设置定时恢复（可选） | ❌ |
+| `[NOTIFY_SILENT]` | 静默返回 | ❌ |
+
+如果环境不支持可选能力，自动降级（见适配文件）。
+
+### 路径变量
+
+Skill 中使用路径变量，由适配层解析：
+
+| 变量 | 含义 | OpenClaw 默认 |
+|------|------|---------------|
+| `$SKILL_DIR` | 本 skill 根目录 | `~/.openclaw/workspace/skills/source-analyzer` |
+| `$OUTPUT_BASE` | 分析输出基目录 | `~/.openclaw/learning/projects` |
+| `$WORKSPACE` | 工作区根 | `~/.openclaw/workspace` |
+
 ## 核心特性
 
 | 特性 | 说明 |
 |------|------|
 | **三层渐进式分析** | 项目级 → 模块级 → 文件粒度 |
 | **🔁 递归深度分析** | 大型项目模块级递归，每个模块完整三层分析 |
-| **专项分析模板** | LLM Agent（11维度）、数据库（10维度）、基础设施 |
+| **专项分析模板** | LLM Agent（11维度）、Agent Skill（10维度）、数据库（10维度）、基础设施 |
 | **可视化输出** | 自动生成 Mermaid 图表（架构图/时序图/类图） |
 | **原则蒸馏** | 提炼可移植设计原则（Golden Rules）和陷阱（Gotchas） |
 | **自动化脚本** | 项目检测、模块清单生成、递归编排、验证 |
-| **🔄 弹性重试** | LLM rate limit / 并发失败自动重试（最多 5 次），cron 自动恢复 |
-| **📌 Goal 持久化** | 任务状态写入文件，会话中断后可恢复，不丢失进度 |
+| **🔌 环境适配** | 环境无关设计，通过适配层支持多平台（OpenClaw / opencode / 纯 CLI） |
+| **🔄 弹性重试** | LLM rate limit / 并发失败自动重试（最多 5 次），定时自动恢复（如环境支持） |
+| **📌 状态持久化** | 任务状态写入文件，会话中断后可恢复，不丢失进度 |
 
 ---
 
@@ -27,20 +65,20 @@ metadata: {"openclaw":{"emoji":"🔬"}}
 
 > **核心问题**：分析任务耗时长（4-8h），会话中断后 goal 状态丢失，进度无法恢复。
 >
-> **解决方案**：任务状态持久化到文件 `~/.openclaw/workspace/active-goals.json`，每次会话开始时检查未完成任务。
+> **解决方案**：任务状态持久化到文件 `$WORKSPACE/active-goals.json`，每次会话开始时检查未完成任务。
 
 ### 执行前：注册 Goal（必做）
 
 分析开始前，**立即**注册 goal：
 
 ```bash
-python3 scripts/goal-tracker.py register \
+python3 $SKILL_DIR/scripts/goal-tracker.py register \
   --objective "深度分析 VictoriaMetrics 项目" \
   --project "VictoriaMetrics" \
-  --output-dir "~/.openclaw/learning/projects/victoriametrics" \
+  --output-dir "$OUTPUT_BASE/victoriametrics" \
   --mode "recursive_deep" \
   --total-tasks 42 \
-  --plan-file "~/.openclaw/learning/projects/victoriametrics/PLAN.md"
+  --plan-file "$OUTPUT_BASE/victoriametrics/PLAN.md"
 ```
 
 输出：
@@ -49,7 +87,7 @@ python3 scripts/goal-tracker.py register \
    目标: 深度分析 VictoriaMetrics 项目
    项目: VictoriaMetrics
    模式: recursive_deep
-   输出: ~/.openclaw/learning/projects/victoriametrics
+   输出: $OUTPUT_BASE/victoriametrics
 ```
 
 ### 执行中：同步进度（每批次后）
@@ -57,7 +95,7 @@ python3 scripts/goal-tracker.py register \
 每个批次完成后更新进度：
 
 ```bash
-python3 scripts/goal-tracker.py update \
+python3 $SKILL_DIR/scripts/goal-tracker.py update \
   --goal-id "goal-20260706-142500" \
   --phase "Phase 2: 模块级递归分析 (批次 2/5)" \
   --completed 15
@@ -68,15 +106,15 @@ python3 scripts/goal-tracker.py update \
 分析完成后标记 goal 完成：
 
 ```bash
-python3 scripts/goal-tracker.py complete --goal-id "goal-20260706-142500"
+python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "goal-20260706-142500"
 ```
 
 ### 会话恢复：检查未完成任务
 
-**每次会话开始时**（包括 heartbeat），检查未完成任务：
+**每次会话开始时**（如环境支持心跳/定时检查），检查未完成任务：
 
 ```bash
-python3 scripts/goal-tracker.py check
+python3 $SKILL_DIR/scripts/goal-tracker.py check
 ```
 
 如果发现未完成任务，通知用户并提供恢复选项。
@@ -84,7 +122,7 @@ python3 scripts/goal-tracker.py check
 ### 查看任务列表
 
 ```bash
-python3 scripts/goal-tracker.py list
+python3 $SKILL_DIR/scripts/goal-tracker.py list
 ```
 
 ---
@@ -122,73 +160,106 @@ python3 scripts/goal-tracker.py list
 
 ---
 
+## 📥 项目下载规范
+
+> **下载 GitHub 项目时，统一使用 `gh repo clone -- --depth=1`。**
+
+```bash
+# ✅ 推荐：gh CLI + 浅克隆（快速、省空间、自动认证）
+gh repo clone <owner>/<repo> -- --depth=1
+
+# 示例
+gh repo clone duckdb/duckdb -- --depth=1
+gh repo clone infiniflow/ragflow -- --depth=1
+```
+
+**规则**:
+- 源码分析只需要当前代码，不需要完整 git 历史
+- `--depth=1` 将下载时间从几分钟缩短到几秒，节省磁盘空间
+- 如需完整历史，后续可 `git fetch --unshallow`
+- 禁止使用 `git clone https://...` 或 `git clone git@...`（除非 gh 不可用）
+
+---
+
 ## 快速开始
 
 ### 自动化流程（推荐）
 
 ```bash
+# Step 0: 下载项目（如尚未下载）
+gh repo clone <owner>/<repo> -- --depth=1
+# 项目统一存放在 /home/tianjiqx/opensource/
+cd /home/tianjiqx/opensource
+
 # Step 1: 智能分析（自动检测项目类型 + 推荐模板）
 # ⚠️ 必须传入 --model 参数记录当前使用的模型名
-python3 scripts/smart-analyze.py /path/to/project \
-  --model "$(cat ~/.openclaw/.current-model 2>/dev/null || echo 'unknown')" \
-  -o ~/.openclaw/learning/projects/project-name
+python3 $SKILL_DIR/scripts/smart-analyze.py /path/to/project \
+  --model "$(cat $WORKSPACE/.current-model 2>/dev/null || echo 'unknown')" \
+  -o $OUTPUT_BASE/project-name
 
 # 或者直接指定模型名
-python3 scripts/smart-analyze.py /path/to/project \
+python3 $SKILL_DIR/scripts/smart-analyze.py /path/to/project \
   --model "zai/glm-5.2" \
-  -o ~/.openclaw/learning/projects/project-name
+  -o $OUTPUT_BASE/project-name
 ```
 
 # Step 2: 生成研究计划
-python3 scripts/generate-research-plan.py /path/to/project \
+python3 $SKILL_DIR/scripts/generate-research-plan.py /path/to/project \
   --depth file-level --max-files 30 \
-  -o ~/.openclaw/learning/projects/project-name/RESEARCH_PLAN.md
+  -o $OUTPUT_BASE/project-name/RESEARCH_PLAN.md
 
-# Step 3: 执行分析（使用 sessions_spawn 并行）
+# Step 3: 执行分析（并行派发子任务）
 # 根据 RESEARCH_PLAN.md 派发子任务
+# 行为指令 [DISPATCH] 由适配层翻译为具体实现
 
 # Step 4: 验证结果
-python3 scripts/verify-analysis.py ~/.openclaw/learning/projects/project-name --all
+python3 $SKILL_DIR/scripts/verify-analysis.py $OUTPUT_BASE/project-name --all
 ```
 
 ### 递归深度分析流程（大型项目）
 
 ```bash
 # Step 1: 递归生成模块清单（自动展开大型目录）
-python3 scripts/generate-module-manifest.py /path/to/project \
+python3 $SKILL_DIR/scripts/generate-module-manifest.py /path/to/project \
   --expand-threshold 30 --max-recursion-depth 3 \
   -o output-dir/module-manifest.json
 
 # Step 2: 生成分批并行分析计划
-python3 scripts/recursive-orchestrator.py output-dir \
+python3 $SKILL_DIR/scripts/recursive-orchestrator.py output-dir \
   --manifest output-dir/module-manifest.json \
   --project-path /path/to/project \
   --max-parallel 8 \
   [--priority-only]  # 可选：只分析高重要性模块
-  -o output-dir/recursive-plan.md
+  -o output-dir/PLAN.md
 
-# Step 3: 按 recursive-plan.md 执行 sessions_spawn（分批并行）
+# Step 3: 按 PLAN.md 执行（分批并行）
 # Phase 1: 项目级分析
 # Phase 2: 模块级递归分析（分批，每批 max-parallel 个并行）
 # Phase 3: 项目级总结
 
 # Step 4: 验证结果
-python3 scripts/verify-analysis.py output-dir --recursive
+python3 $SKILL_DIR/scripts/verify-analysis.py output-dir --recursive
 ```
 
 ### 手动执行
 
 ```bash
-# Layer 1: 项目级分析（并行）
-sessions_spawn task="分析项目概览，输出到 00-README.md" label="overview"
-sessions_spawn task="分析架构设计，输出到 01-architecture.md" label="architecture"
+# Layer 1: 项目级分析（并行派发）
+[DISPATCH: task="分析项目概览，输出到 00-README.md" label="overview"]
+[DISPATCH: task="分析架构设计，输出到 01-architecture.md" label="architecture"]
 
 # Layer 2: 模块级分析（按模块派发）
-sessions_spawn task="分析 core 模块" label="module-core"
+[DISPATCH: task="分析 core 模块" label="module-core"]
 
 # Layer 3: 文件粒度分析（按文件组派发）
-sessions_spawn task="分析 Bootstrap.java, Service.java" label="file-group-1"
+[DISPATCH: task="分析 Bootstrap.java, Service.java" label="file-group-1"]
 ```
+
+> `[DISPATCH]` 是环境无关的派发指令。适配层负责翻译为具体实现：
+> - **OpenClaw**: `sessions_spawn(task=..., label=..., mode="run")`
+> - **opencode**: Task tool / 子进程
+> - **纯 CLI**: 串行执行
+> 详见 `runtime/adapter.md`
 
 ---
 
@@ -296,11 +367,11 @@ Phase 1: 项目级扫描 (Layer 1)
 
 Phase 2: 模块级递归分析 (每个模块完整三层)
 ├── 对每个模块执行完整三层分析
-│   ├── Layer 1: 模块概览（README、架构、质量、学习价值）→ 4 文档
+│   ├── Layer 1: 模块概览（README、架构、依赖、质量、学习价值）→ 5 文档
 │   ├── Layer 2: 子模块/组件分析 → 每子模块 3 文档
 │   └── Layer 3: 关键文件深度分析 → 每文件 1 文档
 ├── 生成模块独立报告
-└── 使用 sessions_spawn 并行执行
+└── 使用并行子任务派发
 
 Phase 3: 项目级总结
 ├── 整合所有模块分析
@@ -314,18 +385,20 @@ Phase 3: 项目级总结
 ```
 output-dir/
 ├── INDEX.md                          # 总索引
-├── 00-project-level/                 # 项目级 (4 文档)
+├── 00-project-level/                 # 项目级 (5 文档)
 │   ├── README.md
 │   ├── architecture.md
+│   ├── dependencies.md               # ⭐ 项目依赖分析（必做）
 │   ├── quality-score.md
 │   └── learning-value.md
 ├── 10-module-deep/                   # 🔥 模块深度分析
 │   ├── _MODULE_SUMMARY.md            # 模块总结对比
 │   ├── module-a/                     # 模块 A 完整分析
 │   │   ├── INDEX.md                  # 模块索引
-│   │   ├── 00-overview/              # Layer 1 (4 文档)
+│   │   ├── 00-overview/              # Layer 1 (5 文档)
 │   │   │   ├── README.md
 │   │   │   ├── architecture.md
+│   │   │   ├── dependencies.md       # ⭐ 模块依赖分析（必做）
 │   │   │   ├── quality-score.md
 │   │   │   └── learning-value.md
 │   │   ├── 10-submodule/             # Layer 2 (子模块)
@@ -356,36 +429,39 @@ output-dir/
 
 ```bash
 # Step 1: 生成模块清单（自动递归展开）
-python3 scripts/generate-module-manifest.py /path/to/project \
+python3 $SKILL_DIR/scripts/generate-module-manifest.py /path/to/project \
   --expand-threshold 30 --max-recursion-depth 3 \
   -o output-dir/module-manifest.json
 
 # Step 2: 生成分析计划（分批并行）
-python3 scripts/recursive-orchestrator.py output-dir \
+python3 $SKILL_DIR/scripts/recursive-orchestrator.py output-dir \
   --manifest output-dir/module-manifest.json \
   --project-path /path/to/project \
   --max-parallel 8 \
   --priority-only  # 可选：只分析高重要性模块
-  -o output-dir/recursive-plan.md
+  -o output-dir/PLAN.md
 
-# Step 3: 按 recursive-plan.md 分批执行
+# Step 3: 按 PLAN.md 分批执行
 # Phase 1: 项目级扫描（串行）
-sessions_spawn task="项目级扫描，识别所有模块" label="project-scan"
+[DISPATCH: task="项目级扫描，识别所有模块" label="project-scan"]
 
 # Phase 2: 模块级递归（分批并行，每批 max-parallel 个）
 # 批次 1
 for module in batch_1; do
-  sessions_spawn task="递归分析模块: $module" label="module-$module"
+  [DISPATCH: task="递归分析模块: $module" label="module-$module"]
 done
-sessions_yield message="等待批次 1 完成"
+[WAIT: "等待批次 1 完成"]
 
 # 批次 2...
 
 # Phase 3: 项目级总结（等待所有模块完成后）
-sessions_spawn task="整合所有模块分析，生成总结" label="project-summary"
+[DISPATCH: task="整合所有模块分析，生成总结" label="project-summary"]
 ```
 
-> **提示**: 对于 100+ 模块的超大型项目，先用 `--priority-only` 分析 high 重要性模块，再按需扩展。
+> `[DISPATCH]` / `[WAIT]` 是环境无关指令，详见 `runtime/adapter.md`。
+
+> **提示**: 对于 100+ 模块的超大型项目，先用 `--priority-only` 分析 high 重要性模块，再按需扩展。  
+> **并行限制**: 并行度取决于运行环境。OpenClaw 建议 max-parallel=8，opencode 建议 4-6，纯 CLI 为 1（串行）。
 
 ### 验证
 
@@ -402,23 +478,24 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ### 预计输出
 
-**小型项目** (< 100 文件): 20-40 文档
-**中型项目** (100-500 文件): 50-150 文档
-**大型项目** (> 500 文件): 100-300+ 文档
+**小型项目** (< 100 文件): 25-45 文档 (含依赖分析)
+**中型项目** (100-500 文件): 60-170 文档 (含依赖分析)
+**大型项目** (> 500 文件): 120-350+ 文档 (含依赖分析)
 
 ### 与最大分析模式对比
 
 | 特性 | 最大分析模式 | 递归深度分析 |
 |------|--------------|--------------|
-| 模块深度 | 浅（3 文档/模块）| 深（完整三层/模块）|
+| 模块深度 | 浅（3-4 文档/模块）| 深（完整三层/模块）|
 | 文件覆盖 | 部分关键文件 | 每模块独立选择关键文件 |
 | 适用规模 | 中小型项目 | 大型/超大型项目 |
-| 文档数量 | 40-80 | 100-300+ |
+| 文档数量 | 40-80 | 120-350+ |
 | 执行时间 | 2-4 小时 | 4-8 小时 |
 | 并行度 | 中 | 高（模块级分批并行）|
 | 子模块分析 | ❌ | ✅ 递归展开 |
 | 跨模块对比 | 浅 | 深 |
 | 重要性评估 | ❌ | ✅ 自动评估 |
+| 依赖分析 | ✅ 项目级 | ✅ 项目级+模块级 |
 
 ---
 
@@ -427,9 +504,37 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | 项目类型 | 识别特征 | 应用模板 |
 |----------|----------|----------|
 | **LLM Agent** | LLM/AI/Agent/Memory/Tool | `templates/llm-agent/` (11个) |
+| **Agent Skill** | SKILL.md/skill/trigger/harness/prompt | `templates/agent-skill/` (10个) |
 | **数据库/大数据** | SQL/Storage/Index/Query | `templates/database/` (11个) |
 | **基础设施** | 数据库/消息队列/存储 | `templates/infrastructure/` (3个) |
 | **通用项目** | 以上都不匹配 | `templates/general/` (9个) |
+
+### 🔀 多类型组合分析
+
+> 一个项目可能同时具备多种类型特征（如 Skill 项目包含 LLM Agent 集成，或数据库项目内置 AI 能力）。
+
+**检测逻辑**: `detect-project-type.py` 计算所有类型得分，主类型得分 > 10 时认定，次要类型得分超过主类型 50% 时同时命中。
+
+**模板合并**: `recommend_templates_multi()` 将所有命中类型的模板**合并去重**，生成综合模板清单。
+
+**输出组织**: 多类型时，专项分析文档按类型分子目录存放：
+
+```
+30-specialized/
+├── llm-agent/              # LLM Agent 专项（11 个文档）
+│   ├── LLM_AGENT_01_ARCHITECTURE.md
+│   └── ...
+├── agent-skill/            # Agent Skill 专项（10 个文档）
+│   ├── SKILL_01_ARCHITECTURE.md
+│   └── ...
+└── database/               # 数据库专项（如同时具备）
+    ├── DATABASE_01_ARCHITECTURE.md
+    └── ...
+```
+
+**分析优先级**: 先主类型全量分析，次要类型按需选取关键维度。
+
+**跨类型关联**: 注意不同类型特征之间的交叉点（如数据库项目中的 AI 查询优化器、Skill 项目中的 Agent 记忆系统）。
 
 **自动检测**: `python3 scripts/detect-project-type.py /path/to/project --recommend-templates`
 
@@ -485,24 +590,42 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ## 专项分析模板
 
-### 🔥 LLM Agent 专项（11维度）
+### 🔥 LLM Agent 专项（11维度）— v3.0 Agent = Model + Harness
 
 针对 AI Agent 项目（LangChain/AutoGen/MemGPT/CrewAI 等）：
 
+| # | 文档 | 对应公式 | 核心问题 |
+|---|------|---------|----------|
+| 0 | LLM_AGENT_ANALYSIS_OVERVIEW.md | - | 总览、Agent = Model + Harness 框架 |
+| 1 | LLM_AGENT_01_ARCHITECTURE.md | 整体 | Agent 类型、Model/Harness 分离度、状态管理、工作流 |
+| 2 | LLM_AGENT_02_LLM_INTEGRATION.md | Model | Provider 抽象层、多模型路由、Fidelity 保留 |
+| 3 | LLM_AGENT_03_CONTEXT_ENGINEERING.md | Context | 🔥 上下文组装、Token 预算、压缩策略、动态注入 |
+| 4 | LLM_AGENT_04_MEMORY_SYSTEM.md | Context (持久化) | 记忆架构、检索策略、遗忘机制 |
+| 5 | LLM_AGENT_05_TOOL_SYSTEM.md | Tools | 工具定义、调用机制、安全沙箱 |
+| 6 | LLM_AGENT_06_CONSTRAINT_SYSTEM.md | Constraints | 🔥 约束光谱、策略引擎、Fail-closed、权限模型 |
+| 7 | LLM_AGENT_07_PLANNING_REASONING.md | Correction (规划级) | 任务分解、推理方式、自我反思 |
+| 8 | LLM_AGENT_08_VERIFICATION_SELF_HEALING.md | Verification + Correction | 🔥 输出验证、验证门、自愈闭环、回滚机制 |
+| 9 | LLM_AGENT_09_MULTI_AGENT.md | Coordination | 🔥 通信协议、任务委派、并发控制、结果聚合 |
+| 10 | LLM_AGENT_10_OBSERVABILITY.md | Harness 运维 | 日志追踪、指标监控、延迟优化、成本控制 |
+| 11 | LLM_AGENT_11_EVALUATION_FRAMEWORK.md | 外部视角 | 评估基准、测试方法、框架选型、供应商锁定 |
+
+### 🧩 Agent Skill 专项（10维度）
+
+针对 AI Agent Skill / 技能包项目（Claude Code Skills、Cursor Rules、OpenClaw Skills 等）：
+
 | # | 文档 | 核心问题 |
 |---|------|----------|
-| 0 | LLM_AGENT_ANALYSIS_OVERVIEW.md | 总览、分析流程 |
-| 1 | LLM_AGENT_01_ARCHITECTURE.md | Agent 类型、状态管理、工作流 |
-| 2 | LLM_AGENT_02_LLM_INTEGRATION.md | 模型选择、Prompt 工程、成本控制 |
-| 3 | LLM_AGENT_03_MEMORY_SYSTEM.md | 记忆架构、检索策略、遗忘机制 |
-| 4 | LLM_AGENT_04_TOOL_SYSTEM.md | 工具定义、调用机制、安全沙箱 |
-| 5 | LLM_AGENT_05_PLANNING_REASONING.md | 任务分解、推理方式、自我反思 |
-| 6 | LLM_AGENT_06_HUMAN_COLLABORATION.md | 中断机制、用户干预、权限控制 |
-| 7 | LLM_AGENT_07_SAFETY_ALIGNMENT.md | Prompt 注入防护、数据保护 |
-| 8 | LLM_AGENT_08_OBSERVABILITY.md | 日志追踪、指标监控、调试 |
-| 9 | LLM_AGENT_09_PERFORMANCE.md | 延迟优化、成本控制、并发 |
-| 10 | LLM_AGENT_10_EVALUATION.md | 评估基准、测试方法 |
-| 11 | LLM_AGENT_11_AGENT_FRAMEWORK.md | 框架选型、集成深度、供应商锁定、迁移可行性 |
+| 0 | SKILL_ANALYSIS_OVERVIEW.md | 总览、Skill 类型分类、分析流程 |
+| 1 | SKILL_01_ARCHITECTURE.md | Skill 组织形式、层级结构、清单管理 |
+| 2 | SKILL_02_TRIGGER_ROUTING.md | 意图识别、触发机制、优先级仲裁 |
+| 3 | SKILL_03_INSTRUCTION_ENGINEERING.md | Prompt 结构、约束设计、反理性化 |
+| 4 | SKILL_04_CONTEXT_MANAGEMENT.md | Token 预算、延迟加载、上下文压缩 |
+| 5 | SKILL_05_TOOL_INTEGRATION.md | 工具定义、权限控制、安全边界 |
+| 6 | SKILL_06_COMPOSITION_ORCHESTRATION.md | Skill 间协作、并行编排、子代理委派 |
+| 7 | SKILL_07_PLATFORM_ADAPTATION.md | 多平台支持、供应商锁定、迁移成本 |
+| 8 | SKILL_08_QUALITY_TESTING.md | Eval 框架、遵循度评估、回归检测 |
+| 9 | SKILL_09_OBSERVABILITY.md | 执行追踪、Token 监控、失败诊断 |
+| 10 | SKILL_10_EVOLUTION_GOVERNANCE.md | 版本管理、兼容性、贡献规范 |
 
 ### 🗄️ 数据库/大数据专项（10维度）
 
@@ -526,10 +649,12 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ## 可用脚本
 
+> 所有脚本通过 `$SKILL_DIR/scripts/` 引用，`$SKILL_DIR` 由适配层解析。
+
 | 脚本 | 功能 |
 |------|------|
 | `resilient-runner.py` | 🔄 **弹性运行器** - 自动检测失败任务、指数退避重试、断点续传 |
-| `setup-cron-recovery.py` | ⏰ **Cron 自动恢复设置** - 配置定期检查+重试的定时任务 |
+| `setup-cron-recovery.py` | ⏰ **调度恢复设置** - 多环境定时恢复配置生成（OpenClaw cron / 系统 crontab / 手动） |
 | `smart-analyze.py` | 🤖 智能分析入口 - 自动检测项目类型、推荐模板 |
 | `generate-research-plan.py` | 生成详细研究计划（预研究 + 任务分解） |
 | `generate-file-list.py` | 自动识别关键文件，生成文件列表 |
@@ -561,7 +686,15 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | [REFERENCE_ORGANIZATION_GUIDE.md](guides/REFERENCE_ORGANIZATION_GUIDE.md) | 参考文献规范 |
 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) | 🔁 递归深度分析指南 |
 | [PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md) | 📋 计划驱动执行指南（检查点+验收）|
-| [RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md) | 🔄 弹性执行指南（自动重试+Cron恢复）|
+| [RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md) | 🔄 弹性执行指南（自动重试+定时恢复）|
+
+### 运行时适配 (runtime/)
+
+| 文档 | 内容 |
+|------|------|
+| [adapter.md](runtime/adapter.md) | 🔌 适配层协议规范（意图/行为/能力三层分离）|
+| [environments/openclaw.md](runtime/environments/openclaw.md) | OpenClaw 环境适配 |
+| [environments/opencode.md](runtime/environments/opencode.md) | opencode / 其他环境适配 |
 
 ### 通用模板 (templates/general/)
 
@@ -587,32 +720,56 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | [PERFORMANCE_MODELING_TEMPLATE.md](templates/infrastructure/PERFORMANCE_MODELING_TEMPLATE.md) | 性能建模（Amplification框架） |
 | [CONFIGURATION_TUNING_TEMPLATE.md](templates/infrastructure/CONFIGURATION_TUNING_TEMPLATE.md) | 配置与调优指南 |
 
+### Agent Skill 模板 (templates/agent-skill/)
+
+| 文档 | 内容 |
+|------|------|
+| [SKILL_ANALYSIS_OVERVIEW.md](templates/agent-skill/SKILL_ANALYSIS_OVERVIEW.md) | Agent Skill 专项分析总览 |
+| [SKILL_01_ARCHITECTURE.md](templates/agent-skill/SKILL_01_ARCHITECTURE.md) | Skill 架构设计分析 |
+| [SKILL_02_TRIGGER_ROUTING.md](templates/agent-skill/SKILL_02_TRIGGER_ROUTING.md) | 触发与路由分析 |
+| [SKILL_03_INSTRUCTION_ENGINEERING.md](templates/agent-skill/SKILL_03_INSTRUCTION_ENGINEERING.md) | 指令工程分析 |
+| [SKILL_04_CONTEXT_MANAGEMENT.md](templates/agent-skill/SKILL_04_CONTEXT_MANAGEMENT.md) | 上下文管理分析 |
+| [SKILL_05_TOOL_INTEGRATION.md](templates/agent-skill/SKILL_05_TOOL_INTEGRATION.md) | 工具集成分析 |
+| [SKILL_06_COMPOSITION_ORCHESTRATION.md](templates/agent-skill/SKILL_06_COMPOSITION_ORCHESTRATION.md) | 组合与编排分析 |
+| [SKILL_07_PLATFORM_ADAPTATION.md](templates/agent-skill/SKILL_07_PLATFORM_ADAPTATION.md) | 平台适配分析 |
+| [SKILL_08_QUALITY_TESTING.md](templates/agent-skill/SKILL_08_QUALITY_TESTING.md) | 质量与测试分析 |
+| [SKILL_09_OBSERVABILITY.md](templates/agent-skill/SKILL_09_OBSERVABILITY.md) | 可观测性分析 |
+| [SKILL_10_EVOLUTION_GOVERNANCE.md](templates/agent-skill/SKILL_10_EVOLUTION_GOVERNANCE.md) | 演进与治理分析 |
+
 ---
 
 ## 执行纪律
 
 0. **📌 先注册 Goal** — 分析开始前，运行 `goal-tracker.py register` 注册任务，确保状态持久化
 1. **先有计划再执行** — 递归深度分析模式必须先生成 PLAN.md 并保存到输出目录
-2. **按计划执行** — 每个 sessions_spawn 任务必须引用 PLAN.md 中的 Task ID 和预期输出
+2. **按计划执行** — 每个派发的子任务必须引用 PLAN.md 中的 Task ID 和预期输出
 3. **追踪进度** — 使用 plan-tracker.py 维护检查点，每批完成后同步；同时运行 `goal-tracker.py update` 更新 goal 状态
-4. **子代理报告** — 每个子代理完成后必须生成 .task-report.json
+4. **子代理报告** — 每个子任务完成后必须生成 .task-report.json
 5. **按计划验收** — 分析完成后运行 plan-tracker.py verify，输出符合度报告
 6. **补救缺失** — 对验收中符合度 < 80% 的任务，补充分析
 7. **📌 标记完成** — 分析完成后运行 `goal-tracker.py complete` 标记 goal 完成
 
+### 环境适配约定
+
+- **派发子任务**: 使用 `[DISPATCH]` 行为指令（适配层翻译）
+- **等待批次**: 使用 `[WAIT]` 行为指令
+- **定时恢复**: 如果环境支持（OpenClaw cron / 系统 crontab），设置自动恢复
+- **路径引用**: 使用 `$SKILL_DIR` 等变量，由适配层解析为实际路径
+- 详细映射见 `runtime/adapter.md` + 对应环境适配文件
+
 ## 🔄 弹性执行纪律（解决 LLM rate limit / 并发失败）
 
-> **核心问题**：分析大项目时 LLM 并发限制导致 subagent 失败 → 主 agent 停止 → 分析中止
+> **核心问题**：分析大项目时 LLM 并发限制导致子任务失败 → 主 agent 停止 → 分析中止
 >
 > **解决方案**：三层防线 + 自动恢复。详见 [RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md)
 
 1. **先初始化弹性检查点** — 分析开始前运行 `resilient-runner.py --init`
-2. **设置 cron 自动恢复** — 使用 `setup-cron-recovery.py` 设置定时恢复（每 2 分钟）
-3. **批次间同步状态** — 每批 sessions_yield 后运行 `resilient-runner.py --sync`
-4. **失败任务全自动重试** — 运行 `resilient-runner.py --continue` 生成 continuation prompt（让 cron session 自主执行）
+2. **如环境支持定时任务，设置自动恢复** — 使用 `setup-cron-recovery.py` 生成调度配置，通过环境适配层创建
+3. **批次间同步状态** — 每批 [WAIT] 后运行 `resilient-runner.py --sync`
+4. **失败任务全自动重试** — 运行 `resilient-runner.py --continue` 生成 continuation prompt（让恢复 session 自主执行）
 5. **指数退避** — rate_limit 错误等待 60→120→240→480→960 秒递增
 6. **全局超时** — 1.5h 后停止重试，避免无限循环
-7. **完成后清理** — 分析结束后移除 cron job
+7. **完成后清理** — 如设置了定时恢复任务，分析结束后移除
 
 **完成检测机制**（可靠性递减）：
 1. `.task-complete.json` 签名文件（LLM 完成后必须生成，包含文件哈希）— 信心度 0.95
@@ -620,18 +777,37 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 3. 文件存在 + 内容验证（最小大小、占位符检测、结构标记）— 信心度 0.7
 
 **两种重试模式**：
-- `--auto-resume`：生成详细的重试指令文本（列出每个任务的 sessions_spawn 命令）
-- `--continue`：生成 continuation prompt（让 agent session 自主决定最佳执行方式，适合 cron）
+- `--auto-resume`：生成详细的重试指令文本（列出每个任务的派发描述）
+- `--continue`：生成 continuation prompt（让 agent session 自主决定最佳执行方式）
 
-**关键原则**：脚本负责检测+报告，agent 负责决策+执行。主 agent 不需要一次性完成所有任务。即使 session 中断，cron 触发的新 session 会拿过接力棒。
+**关键原则**：脚本负责检测+报告，agent 负责决策+执行。主 agent 不需要一次性完成所有任务。即使 session 中断，定时恢复触发的新 session 会拿过接力棒。
+
+> **环境差异**: 弹性恢复的自动化程度取决于运行环境。  
+> OpenClaw 支持 cron + isolated session 全自动恢复。  
+> opencode / 纯 CLI 需手动重新运行 `resilient-runner.py --continue` 或通过系统 crontab 实现。
 
 详见 [guides/PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md)
 
 ---
 
+## 📝 基础约束（全局适用）
+
+1. **输出语言：中文** — 所有分析文档、报告、总结一律使用**中文**撰写。包括：
+   - 项目级 / 模块级 / 文件级分析文档
+   - 专项分析（LLM Agent / 数据库 / 基础设施）
+   - 跨模块对比、可移植模式、改进建议
+   - INDEX.md、README.md、VERSION.md 等元文档
+   - Mermaid 图表中的中文标签（节点/连线名称可保留英文专有名词）
+   - 代码注释说明、设计动机解读
+   - 唯一例外：专有名词、类名、函数名、技术术语保留英文原文（如 `Cascades 优化器`、`MVCC`、`Zero-copy`）
+
+2. **代码引用** — 引用代码时保留原始英文代码，配以中文解释说明
+
+---
+
 ## 执行注意事项
 
-1. **使用 sessions_spawn 并行执行**：不同维度分析任务分配给子代理
+1. **并行派发子任务**：不同维度分析任务分配给并行执行器（使用 `[DISPATCH]` 行为指令）
 2. **增量生成**：先生成核心文档，再补充专项分析
 3. **质量优先**：每个文档必须包含完整的问题清单回答
 4. **🎨 图表必生成**：每个分析文档至少 1 个 Mermaid 图表
@@ -645,18 +821,18 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 ### 0. 📌 标记 Goal 完成（必做，最先执行）
 
 ```bash
-python3 scripts/goal-tracker.py complete --goal-id "<goal-id>"
+python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"
 ```
 
 确保任务状态从 `in_progress` 变为 `completed`，避免下次会话误判为未完成。
 
-### 1. 回写 MEMORY.md
+### 1. 回写记忆文件
 
-将分析结果写入 `~/.openclaw/workspace/MEMORY.md`：
+将分析结果写入长期记忆文件（路径由适配层决定，OpenClaw 默认 `$WORKSPACE/MEMORY.md`）：
 
 ```markdown
 ### [项目名] - [定位] (日期)
-**位置**: `~/.openclaw/learning/projects/[name]/`
+**位置**: `$OUTPUT_BASE/[name]/`
 **关键数据**: Stars、语言、规模、评分
 **核心架构**: 3-5 个要点
 **关键发现**: ⭐ 评分的可移植模式
@@ -666,16 +842,16 @@ python3 scripts/goal-tracker.py complete --goal-id "<goal-id>"
 
 ### 2. 更新对比数据库
 
-编辑 `references/project-comparison-db.md`，添加新项目和对比维度。
+编辑 `$SKILL_DIR/references/project-comparison-db.md`，添加新项目和对比维度。
 
 ### 3. 创建版本记录
 
-复制 `templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`。
+复制 `$SKILL_DIR/templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`。
 
 ### 4. 验证完整性
 
 ```bash
-python3 scripts/verify-analysis.py [analysis-dir] --all
+python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all
 ```
 
 检查：
@@ -687,4 +863,4 @@ python3 scripts/verify-analysis.py [analysis-dir] --all
 
 ---
 
-*最后更新: 2026-07-03*
+*最后更新: 2026-07-21*

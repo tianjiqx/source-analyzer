@@ -191,13 +191,13 @@ Phase 1: 项目级扫描 (串行, 10-20 min)
     ↓
 Phase 2: 模块级递归 (分批并行, 每模块 30-60 min)
     ├── 批次 1: 高优先级模块 (importance=high)
-    │   ├── sessions_spawn: module-a
-    │   ├── sessions_spawn: module-b
+    │   ├── [DISPATCH]: module-a
+    │   ├── [DISPATCH]: module-b
     │   └── ... (最多 max-parallel 个)
-    ├── sessions_yield: 等待批次 1 完成
+    ├── [WAIT]: 等待批次 1 完成
     ├── 批次 2: 中优先级模块
     │   └── ...
-    └── sessions_yield: 等待所有批次完成
+    └── [WAIT]: 等待所有批次完成
     ↓
 Phase 3: 项目级总结 (串行, 20-30 min)
 ```
@@ -217,7 +217,7 @@ python3 scripts/recursive-orchestrator.py output-dir \
 ### 子代理任务模板
 
 ```python
-# 每个模块的 sessions_spawn 任务包含：
+# 每个模块的 [DISPATCH] 任务包含：
 # 1. 模块路径和规模信息
 # 2. 分析策略（layer1_only / layer1_plus_key_files / full_three_layers / full_with_submodule_recursion）
 # 3. 输出目录路径

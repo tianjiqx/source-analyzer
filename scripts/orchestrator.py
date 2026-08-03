@@ -15,7 +15,7 @@ Usage:
     python3 orchestrator.py /path/to/analysis-plan.md
 
 配置:
-    ~/.openclaw/workspace/skills/source-analyzer/scripts/orchestrator-config.yaml
+    $SKILL_DIR/scripts/orchestrator-config.yaml
 """
 
 import argparse
@@ -840,16 +840,16 @@ class AnalysisOrchestrator:
                 time.sleep(delay)
             
             try:
-                # 这里需要实际调用 sessions_spawn 执行分析
+                # 这里需要实际调用任务派发执行分析
                 # 实际实现中，这里应该:
                 # 1. 构建任务描述
-                # 2. 调用 sessions_spawn
+                # 2. 派发子任务
                 # 3. 等待完成
                 # 4. 检查输出
                 
                 self.logger.info(f"Executing task: {task.name} (attempt {retry + 1})")
                 
-                # TODO: 实际调用 OpenClaw sessions_spawn
+                # TODO: 实际调用任务派发
                 # 这里模拟执行
                 result = self._simulate_task_execution(task)
                 
@@ -914,8 +914,8 @@ class AnalysisOrchestrator:
         
         实际实现应该:
         1. 构建 task 描述
-        2. 调用 sessions_spawn(task=..., label=..., runtime="subagent")
-        3. 等待完成（sessions_yield）
+        2. 派发子任务 (使用 [DISPATCH] 行为指令)
+        3. 等待完成 ([WAIT])
         4. 检查输出文件
         
         返回:

@@ -238,12 +238,14 @@ class OutputScanner:
             return actual
 
         for md_file in self.output_dir.rglob('*.md'):
-            if any(part.startswith('.') for part in md_file.parts):
+            # Only check relative path parts (not the full absolute path)
+            # to avoid filtering out files under .openclaw output dirs
+            rel = md_file.relative_to(self.output_dir)
+            if any(part.startswith('.') for part in rel.parts):
                 continue
             if md_file.name in self.EXCLUDE_FILES:
                 continue
-            rel = md_file.relative_to(self.output_dir).as_posix()
-            actual.add(rel)
+            actual.add(rel.as_posix())
 
         return actual
 
@@ -511,10 +513,11 @@ def can_retry_now(task: TaskState) -> bool:
 # ============================================================
 
 def generate_spawn_command(task: TaskState, checkpoint: Checkpoint) -> str:
-    """生成单个任务的 sessions_spawn 描述（供 agent 在 session 内并行派发）"""
+    """生成单个任务的环境无关派发描述（由适配层翻译为具体实现）"""
     output_base = checkpoint.output_dir
     project_path = checkpoint.project_path
-    module_slug = task.name.replace('/', '-').replace(' ', '-').lower()
+    # 保持目录层级结构，只替换空格，保留斜杠作为目录分隔符
+    module_slug = task.name.replace(' ', '-').lower()
 
     if task.module_path:
         expected_str = '\n'.join(f"  - {f}" for f in task.expected_files[:10])
@@ -557,7 +560,7 @@ def generate_continuation_prompt(failed_tasks: List[TaskState], checkpoint: 'Che
         f"- 源码路径: `{cp.project_path}`",
         f"- 输出目录: `{cp.output_dir}`",
         f"- 计划文件: `{cp.plan_file}`",
-        "- Skill: source-analyzer (~/.openclaw/workspace/skills/source-analyzer/SKILL.md)",
+        "- Skill: source-analyzer ($SKILL_DIR/SKILL.md)",
         "",
         "## 当前状态",
         "",
@@ -584,13 +587,13 @@ def generate_continuation_prompt(failed_tasks: List[TaskState], checkpoint: 'Che
         "请自主决定最佳执行方式：",
         "1. 读取 source-analyzer SKILL.md 了解分析要求",
         "2. 检查每个失败任务已有的输出文件，只补充缺失的部分",
-        "3. 用 sessions_spawn 并行派发失败任务（不要串行）",
-        "4. 用 sessions_yield 等待完成",
+        "3. 用 [DISPATCH] 行为指令并行派发失败任务（不要串行）",
+        "4. 用 [WAIT] 等待完成",
         "5. 完成后运行同步检查：",
         f"   `python3 {script_path} -o {cp.output_dir} --sync`",
         f"6. 如果仍有失败，继续重试（每个任务最多 {MAX_RETRIES} 次）",
         "7. 如果遇到 rate_limit，减少并行数，增加等待时间",
-        "8. 全部完成后用 cron(action=remove) 删除恢复任务",
+        "8. 全部完成后移除定时恢复任务（如环境支持）",
         "",
         "## 关键约束",
         "",
@@ -820,7 +823,7 @@ class ResilientRunner:
         self.cp_mgr.save(cp)
 
     def generate_spawn_instructions(self, tasks: List[TaskState], cp: Checkpoint) -> str:
-        """为需要重试的任务生成 sessions_spawn 指令"""
+        """为需要重试的任务生成环境无关的派发指令"""
         if not tasks:
             return "✅ 所有任务已完成，无需重试。"
 
@@ -830,8 +833,8 @@ class ResilientRunner:
             f"生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
             f"输出目录: `{self.output_dir}`",
             "",
-            "以下任务需要重新派发。请使用 sessions_spawn 派发每个任务，",
-            "然后 sessions_yield 等待完成。",
+            "以下任务需要重新派发。使用 `[DISPATCH]` 行为指令派发每个任务，",
+            "然后 `[WAIT]` 等待完成。",
             "",
         ]
 
@@ -848,12 +851,11 @@ class ResilientRunner:
             lines.append(f"- **状态**: {task.status}")
             lines.append("")
             lines.append("```")
-            lines.append(f'sessions_spawn(')
+            lines.append(f'[DISPATCH:')
             lines.append(f'    task="""{spawn_desc}""",')
-            lines.append(f'    label="{label}",')
-            lines.append(f'    mode="run"')
-            lines.append(f')')
-            lines.append("```")
+            lines.append(f'    label="{label}"')
+            lines.append(f']')
+            lines.append("``")
             lines.append("")
 
         script_path = os.path.abspath(__file__)
@@ -861,7 +863,7 @@ class ResilientRunner:
         lines.append("")
         lines.append("派发完所有任务后:")
         lines.append("```")
-        lines.append(f'sessions_yield(message="等待 {len(tasks)} 个重试任务完成")')
+        lines.append(f'[WAIT: "等待 {len(tasks)} 个重试任务完成"]')
         lines.append("```")
         lines.append("")
         lines.append("等待完成后，再次运行此脚本检查状态:")

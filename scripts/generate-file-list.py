@@ -13,7 +13,7 @@
     python3 generate-file-list.py /path/to/project \
         --max-files 30 \
         --priority "entry,service,high-complexity" \
-        -o ~/.openclaw/learning/projects/project-name/FILE_LIST.md
+        -o $OUTPUT_BASE/project-name/FILE_LIST.md
 """
 
 import os

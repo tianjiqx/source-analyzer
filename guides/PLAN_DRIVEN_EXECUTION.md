@@ -63,7 +63,7 @@
 }
 ```
 
-### 3. 计划驱动的 sessions_spawn
+### 3. 计划驱动的任务派发
 
 每个子代理任务必须：
 - 在 task 描述中包含计划引用（`计划参考: PLAN.md Task #5`）
@@ -131,14 +131,14 @@ python3 scripts/plan-tracker.py complete \
 
 #### Phase 2: 模块级递归（分批并行）
 
-每个 sessions_spawn 任务**必须包含**：
+每个派发的子任务**必须包含**：
 
 1. **计划引用**：告诉子代理它在执行 PLAN.md 中的哪个任务
 2. **预期输出清单**：子代理应该生成哪些文件
 3. **报告要求**：完成后生成 `.task-report.json`
 
 ```
-sessions_spawn task="""
+[DISPATCH: task="""
 [计划驱动执行] PLAN.md Task #{task_id}
 
 你正在执行递归深度分析计划中的一个模块任务。
@@ -194,13 +194,13 @@ sessions_spawn task="""
 - guides/FILE_LEVEL_ANALYSIS.md
 - templates/general/
 """ label="module-{module_slug}"
-```
+]
 
 #### 批次间管理
 
 ```
 # 批次 1 完成后
-sessions_yield message="等待批次 1 完成"
+[WAIT: "等待批次 1 完成"]
 
 # 更新检查点
 python3 scripts/plan-tracker.py sync \

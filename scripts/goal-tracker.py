@@ -19,7 +19,11 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-GOALS_FILE = Path.home() / ".openclaw/workspace/active-goals.json"
+import os
+
+# 支持环境变量覆盖，默认使用 OpenClaw 路径
+_GOALS_DEFAULT = os.path.expanduser("~/.openclaw/workspace/active-goals.json")
+GOALS_FILE = Path(os.environ.get("SOURCE_ANALYZER_GOALS_FILE", _GOALS_DEFAULT))
 
 
 def load_goals() -> Dict[str, Any]:

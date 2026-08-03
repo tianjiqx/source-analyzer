@@ -10,7 +10,7 @@
 
 用法：
     python3 smart-analyze.py /path/to/project
-    python3 smart-analyze.py /path/to/project --output ~/.openclaw/learning/projects/xxx/
+    python3 smart-analyze.py /path/to/project --output $OUTPUT_BASE/xxx/
 """
 
 import os
@@ -20,6 +20,10 @@ import argparse
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+# 导入路径工具（支持环境变量 SOURCE_ANALYZER_OUTPUT_BASE）
+sys.path.insert(0, str(Path(__file__).parent))
+from path_utils import get_output_dir
 
 # 导入其他脚本
 import importlib.util
@@ -34,32 +38,60 @@ def _load_module(name, filename):
 _dpt = _load_module('detect_project_type', 'detect-project-type.py')
 detect_project_type = _dpt.detect_project_type
 recommend_templates = _dpt.recommend_templates
+recommend_templates_multi = _dpt.recommend_templates_multi
 PROJECT_TYPE_SIGNATURES = _dpt.PROJECT_TYPE_SIGNATURES
 
 _gfl = _load_module('generate_file_list', 'generate-file-list.py')
 scan_project_files = _gfl.scan_project_files
 generate_file_list_markdown = _gfl.generate_file_list_markdown
 
-def run_analysis_plan(project_path, project_type, templates, files_info, output_dir, model_name=None):
-    """生成分析执行计划"""
+def run_analysis_plan(project_path, detection_result, multi_templates, files_info, output_dir, model_name=None):
+    """生成分析执行计划（支持多类型）"""
     lines = []
     
+    active_types = multi_templates['types']
+    primary_name = active_types[0][1]
+    primary_type = active_types[0][0]
+    is_multi = len(active_types) > 1
+    
     lines.append(f"# {project_path.name} 智能分析计划\n\n")
-    lines.append(f"> **项目类型**: {project_type}\n")
-    lines.append(f"> **推荐模板**: {len(templates['templates']) + len(templates['general'])} 个\n")
+    lines.append(f"> **项目类型**: {primary_name}")
+    if is_multi:
+        secondary_names = ', '.join([f"{pname}" for _, pname, _ in active_types[1:]])
+        lines.append(f" + {secondary_names} (多类型)")
+    lines.append("\n")
+    total_overviews = len(multi_templates['overviews'])
+    total_specialized = len(multi_templates['templates'])
+    total_general = len(multi_templates['general'])
+    lines.append(f"> **推荐模板**: {total_specialized + total_general} 个（{total_overviews} 总览 + {total_specialized} 专项 + {total_general} 通用）\n")
     lines.append(f"> **关键文件**: {len(files_info)} 个\n")
     if model_name:
         lines.append(f"> **分析模型**: `{model_name}`\n")
     lines.append("\n---\n\n")
     
-    # Phase 1: 项目类型分析
-    lines.append("## Phase 1: 项目级分析（必做）\n\n")
-    lines.append(f"**检测到的项目类型**: {project_type}\n\n")
+    # 多类型提示
+    if is_multi:
+        lines.append("## ⚠️ 多类型命中\n\n")
+        lines.append("该项目同时具备多种特征，将合并多组专项模板进行综合分析。\n\n")
+        lines.append("| 类型 | 得分 | 角色 |\n")
+        lines.append("|------|------|------|\n")
+        for i, (ptype, pname, score) in enumerate(active_types):
+            role = "主类型" if i == 0 else "次要类型"
+            lines.append(f"| {pname} (`{ptype}`) | {score:.1f} | {role} |\n")
+        lines.append("\n---\n\n")
     
-    if templates['overview']:
-        lines.append(f"### 1.1 总览文档\n\n")
-        lines.append(f"- [ ] 阅读 `{templates['overview']}`\n")
-        lines.append(f"- [ ] 生成 `00-project-level/README.md`\n\n")
+    # Phase 1: 项目级分析
+    lines.append("## Phase 1: 项目级分析（必做）\n\n")
+    lines.append(f"**检测到的项目类型**: {primary_name}")
+    if is_multi:
+        lines.append(f" + {len(active_types) - 1} 个次要类型")
+    lines.append("\n\n")
+    
+    if multi_templates['overviews']:
+        lines.append(f"### 1.1 总览文档（{len(multi_templates['overviews'])} 个）\n\n")
+        for ov in multi_templates['overviews']:
+            lines.append(f"- [ ] 阅读 `{ov}`\n")
+        lines.append("\n")
     
     lines.append(f"### 1.2 项目依赖分析 ⭐\n\n")
     lines.append(f"- [ ] 扫描依赖声明文件（package.json / requirements.txt / go.mod / Cargo.toml 等）\n")
@@ -67,19 +99,45 @@ def run_analysis_plan(project_path, project_type, templates, files_info, output_
     lines.append(f"- [ ] 生成 `00-project-level/dependencies.md`\n")
     lines.append(f"- [ ] 筛选「值得关注的优秀库」清单\n\n")
     
-    # Phase 2: 专项模板分析
-    if templates['templates']:
+    # Phase 2: 专项模板分析（按类型分组）
+    if multi_templates['templates']:
         lines.append("## Phase 2: 专项模板分析\n\n")
-        for i, template in enumerate(templates['templates'], 1):
-            template_name = Path(template).stem
-            lines.append(f"### 2.{i} {template_name}\n\n")
-            lines.append(f"- [ ] 阅读 `{template}`\n")
-            lines.append(f"- [ ] 生成 `{project_path.name}/{template_name}.md`\n\n")
+        
+        if is_multi:
+            # 多类型：按类型分组输出
+            lines.append(f"> 共 {len(active_types)} 种类型，{len(multi_templates['templates'])} 个专项模板（合并去重后）\n\n")
+            
+            # 按类型分组
+            type_counter = 0
+            global_idx = 0
+            for ptype, pname, score in active_types:
+                rec = recommend_templates(ptype)
+                type_templates = rec.get('templates', [])
+                if not type_templates:
+                    continue
+                
+                type_counter += 1
+                role = "主类型" if type_counter == 1 else f"次要类型 {type_counter - 1}"
+                lines.append(f"### 2.{type_counter} {pname}（{role}，{len(type_templates)} 个模板）\n\n")
+                lines.append(f"> 输出到 `30-specialized/{ptype}/`\n\n")
+                
+                for template in type_templates:
+                    global_idx += 1
+                    template_name = Path(template).stem
+                    lines.append(f"- [ ] 阅读 `{template}`\n")
+                    lines.append(f"- [ ] 生成 `30-specialized/{ptype}/{template_name}.md`\n\n")
+        else:
+            # 单类型
+            for i, template in enumerate(multi_templates['templates'], 1):
+                template_name = Path(template).stem
+                lines.append(f"### 2.{i} {template_name}\n\n")
+                lines.append(f"- [ ] 阅读 `{template}`\n")
+                lines.append(f"- [ ] 生成 `{project_path.name}/{template_name}.md`\n\n")
     
     # Phase 3: 通用模板分析
-    if templates['general']:
+    if multi_templates['general']:
         lines.append("## Phase 3: 通用模板分析\n\n")
-        for i, template in enumerate(templates['general'], 1):
+        for i, template in enumerate(multi_templates['general'], 1):
             template_name = Path(template).stem
             lines.append(f"### 3.{i} {template_name}\n\n")
             lines.append(f"- [ ] 阅读 `{template}`\n")
@@ -99,14 +157,16 @@ def run_analysis_plan(project_path, project_type, templates, files_info, output_
     lines.append("\n---\n\n")
     
     # 统计信息
-    total_templates = len(templates['templates']) + len(templates['general'])
+    total_templates = total_specialized + total_general
     total_files = len(files_info)
-    total_docs = 1 + total_templates + total_files  # overview + templates + files    
+    total_docs = total_overviews + total_templates + total_files
     lines.append("## 📊 分析统计\n\n")
     lines.append(f"- **预计生成文档数**: {total_docs} 个（含 dependencies.md）\n")
-    lines.append(f"  - 总览文档: 1 个\n")
-    lines.append(f"  - 专项模板: {len(templates['templates'])} 个\n")
-    lines.append(f"  - 通用模板: {len(templates['general'])} 个\n")
+    lines.append(f"  - 总览文档: {total_overviews} 个\n")
+    lines.append(f"  - 专项模板: {total_specialized} 个\n")
+    if is_multi:
+        lines.append(f"  - （来源: {len(active_types)} 种类型合并）\n")
+    lines.append(f"  - 通用模板: {total_general} 个\n")
     lines.append(f"  - 文件分析: {total_files} 个\n\n")
     
     lines.append("---\n\n")
@@ -120,7 +180,7 @@ def run_analysis_plan(project_path, project_type, templates, files_info, output_
 def main():
     parser = argparse.ArgumentParser(description='智能源码分析 - 自动检测项目类型并生成分析计划')
     parser.add_argument('project_path', help='项目路径')
-    parser.add_argument('--output', '-o', help='输出目录（默认: ~/.openclaw/learning/projects/<project-name>/）')
+    parser.add_argument('--output', '-o', help='输出目录（默认: $OUTPUT_BASE/<project-name>/）')
     parser.add_argument('--max-files', type=int, default=30, help='最大文件数量（默认: 30）')
     parser.add_argument('--model', '-m', help='当前分析使用的模型名（如 zai/glm-5.2）')
     
@@ -133,11 +193,8 @@ def main():
     
     project_name = project_path.name
     
-    # 设置输出目录
-    if args.output:
-        output_dir = Path(args.output)
-    else:
-        output_dir = Path.home() / '.openclaw' / 'learning' / 'projects' / project_name
+    # 设置输出目录（支持环境变量 SOURCE_ANALYZER_OUTPUT_BASE）
+    output_dir = get_output_dir(project_name, args.output)
     
     output_dir.mkdir(parents=True, exist_ok=True)
     
@@ -155,17 +212,19 @@ def main():
     print(f"✅ 项目类型: {project_type}")
     print()
     
-    # Step 2: 推荐模板
+    # Step 2: 推荐模板（多类型合并）
     print("=" * 60)
-    print("Step 2: 推荐分析模板")
+    print("Step 2: 推荐分析模板（多类型合并）")
     print("=" * 60)
-    templates = recommend_templates(project_type)
-    total_templates = len(templates['templates']) + len(templates['general'])
+    multi_templates = recommend_templates_multi(detection_result)
+    total_templates = len(multi_templates['templates']) + len(multi_templates['general'])
     print(f"✅ 推荐模板: {total_templates} 个")
-    if templates['overview']:
-        print(f"   - 总览: {templates['overview']}")
-    print(f"   - 专项: {len(templates['templates'])} 个")
-    print(f"   - 通用: {len(templates['general'])} 个")
+    for ov in multi_templates['overviews']:
+        print(f"   - 总览: {ov}")
+    print(f"   - 专项: {len(multi_templates['templates'])} 个")
+    print(f"   - 通用: {len(multi_templates['general'])} 个")
+    if len(multi_templates['types']) > 1:
+        print(f"   ⚠️ 多类型命中: {' + '.join([pname for _, pname, _ in multi_templates['types']])}")
     print()
     
     # Step 3: 扫描文件
@@ -188,7 +247,7 @@ def main():
     print(f"✅ 文件列表: {file_list_path}")
     print()
     
-    # Step 5: 生成分析计划
+    # Step 5: 生成分析计划（多类型）
     print("=" * 60)
     print("Step 5: 生成分析计划")
     print("=" * 60)
@@ -197,8 +256,8 @@ def main():
     model_name = args.model or os.environ.get('OPENCLAW_MODEL', '') or 'unknown'
     analysis_plan_md = run_analysis_plan(
         project_path, 
-        primary_name,
-        templates, 
+        detection_result,
+        multi_templates, 
         files_info, 
         output_dir,
         model_name=model_name
@@ -218,9 +277,14 @@ def main():
         'project_path': str(project_path),
         'project_type': primary_name,
         'project_type_id': project_type,
+        'project_types_all': [{'type': ptype, 'name': pname, 'score': score, 'role': 'primary' if i == 0 else 'secondary'} for i, (ptype, pname, score) in enumerate(multi_templates['types'])],
         'language': language,
         'model': model_name,
         'templates_count': total_templates,
+        'templates_overviews': len(multi_templates['overviews']),
+        'templates_specialized': len(multi_templates['templates']),
+        'templates_general': len(multi_templates['general']),
+        'multi_type': len(multi_templates['types']) > 1,
         'files_count': len(files_info),
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'tool': 'source-analyzer',
@@ -240,10 +304,14 @@ def main():
     print()
     print("📊 统计信息:")
     print(f"   - 项目类型: {primary_name}")
+    if len(multi_templates['types']) > 1:
+        print(f"   - 多类型: {' + '.join([pname for _, pname, _ in multi_templates['types']])}")
     print(f"   - 分析模型: {model_name}")
     print(f"   - 推荐模板: {total_templates} 个")
+    if len(multi_templates['types']) > 1:
+        print(f"   - 多类型合并: {len(multi_templates['overviews'])} 总览 + {len(multi_templates['templates'])} 专项 + {len(multi_templates['general'])} 通用")
     print(f"   - 关键文件: {len(files_info)} 个")
-    print(f"   - 预计文档: {1 + total_templates + len(files_info)} 个")
+    print(f"   - 预计文档: {len(multi_templates['overviews']) + total_templates + len(files_info)} 个")
     print()
     print("💡 下一步:")
     print(f"   1. 查看分析计划: cat {analysis_plan_path}")

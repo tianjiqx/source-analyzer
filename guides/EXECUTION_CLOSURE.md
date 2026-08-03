@@ -8,7 +8,7 @@
 
 ### 回写时机
 
-分析完成后，**必须**将关键信息回写到 `~/.openclaw/workspace/MEMORY.md`：
+分析完成后，**必须**将关键信息回写到 `$WORKSPACE/MEMORY.md`：
 
 1. **分析完成时**：记录项目基本信息和分析状态
 2. **发现重要模式时**：记录可移植的设计原则
@@ -18,7 +18,7 @@
 
 ```markdown
 ### [项目名称] - [项目定位] (分析日期)
-**位置**: `~/.openclaw/learning/projects/[project-name]/`
+**位置**: `$OUTPUT_BASE/[project-name]/`
 **GitHub**: https://github.com/[owner]/[repo]
 **源码**: `/home/tianjiqx/opensource/[project-name]` (已下载/未下载)
 
@@ -60,7 +60,7 @@
 
 ```markdown
 ### PixelRAG 视觉检索增强生成系统 (2026-06-27)
-**位置**: `~/.openclaw/learning/projects/pixelrag/`
+**位置**: `$OUTPUT_BASE/pixelrag/`
 **GitHub**: https://github.com/StarTrail-org/PixelRAG
 **源码**: `/home/tianjiqx/opensource/pixelrag` (已下载)
 
@@ -101,7 +101,7 @@
 
 ### 对比数据库
 
-维护 `~/.openclaw/workspace/skills/source-analyzer/references/project-comparison-db.md`：
+维护 `$SKILL_DIR/references/project-comparison-db.md`：
 
 ```markdown
 # 项目对比数据库
@@ -204,7 +204,7 @@ git pull
 NEW_COMMIT=$(git rev-parse HEAD)
 
 # 3. 对比分析版本
-cat ~/.openclaw/learning/projects/[project]/VERSION.md
+cat $OUTPUT_BASE/[project]/VERSION.md
 
 # 4. 决定更新范围
 # - 小更新（文档修复）：跳过
@@ -236,7 +236,7 @@ echo "- v1.1 | $(date +%Y-%m-%d) | $NEW_COMMIT | 增量更新" >> VERSION.md
 分析过程中自动保存检查点：
 
 ```json
-// ~/.openclaw/learning/projects/[project]/.checkpoint.json
+// $OUTPUT_BASE/[project]/.checkpoint.json
 {
   "version": "1.0",
   "last_update": "2026-06-27T14:00:00",

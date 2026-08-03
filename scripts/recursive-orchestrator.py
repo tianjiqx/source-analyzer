@@ -6,7 +6,7 @@
 1. 结构化任务清单（### Task N: name [status: pending] 格式）
 2. 每个任务的预期输出文件清单
 3. 分批并行策略
-4. sessions_spawn 命令（含计划引用和报告要求）
+4. [DISPATCH] 指令（含计划引用和报告要求）
 
 用法:
     python3 recursive-orchestrator.py <output-dir> --manifest module-manifest.json --project-path /path/to/project
@@ -25,7 +25,17 @@ def load_manifest(manifest_path: Path) -> dict:
 
 
 def module_slug(name: str) -> str:
-    return name.replace('/', '-').replace(' ', '-').replace('.', '-')
+    """
+    将模块名转换为目录路径（保持层级结构）
+    
+    例如:
+        apps/app/src/app -> apps/app/src/app (保持目录结构)
+        packages/core -> packages/core
+    
+    只替换空格和点号，保留斜杠作为目录分隔符
+    """
+    # 保留 / 作为目录分隔符，只替换空格和点号
+    return name.replace(' ', '-').replace('.', '-')
 
 
 def get_expected_files(module: dict, output_dir: str) -> list:
@@ -53,7 +63,7 @@ def get_expected_files(module: dict, output_dir: str) -> list:
 
 
 def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_path: str) -> tuple:
-    """生成计划驱动的 sessions_spawn 任务"""
+    """生成计划驱动的分析任务描述（环境无关）"""
     
     name = module['name']
     path = module['path']
@@ -213,7 +223,7 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
 - 完成条件: 4 个文件全部存在，无 placeholder
 
 ```
-sessions_spawn task="项目级分析: 概览、架构、质量评分、学习价值" label="project-level"
+[DISPATCH: task="项目级分析: 概览、架构、质量评分、学习价值" label="project-level"]
 ```
 
 ---
@@ -248,14 +258,14 @@ sessions_spawn task="项目级分析: 概览、架构、质量评分、学习价
 - 完成条件: INDEX.md 存在 + Layer 1 完整 + 按策略完成对应深度
 
 ```
-sessions_spawn task=\"\"\"{task_desc}\"\"\" label="{label}"
+[DISPATCH: task=\"\"\"{task_desc}\"\"\" label=\"{label}\"]
 ```
 
 """
             task_id += 1
         
         if batch_idx < len(batches) - 1:
-            plan += f"```\nsessions_yield message=\"等待批次 {batch_idx + 1} 完成\"\n```\n\n---\n\n"
+            plan += f"```\n[WAIT: \"等待批次 {batch_idx + 1} 完成\"]\n```\n\n---\n\n"
     
     plan += f"""---
 
@@ -273,7 +283,7 @@ sessions_spawn task=\"\"\"{task_desc}\"\"\" label="{label}"
 - 完成条件: 5 个文件全部存在
 
 ```
-sessions_spawn task="整合所有模块分析，生成跨模块报告" label="project-summary"
+[DISPATCH: task="整合所有模块分析，生成跨模块报告" label="project-summary"]
 ```
 
 ---
@@ -336,7 +346,7 @@ def main():
     print(f"   并行批次: {batch_count} 批 × {args.max_parallel}")
     print(f"\n📋 下一步:")
     print(f"   1. python3 scripts/plan-tracker.py init --plan {output_path} --manifest {args.manifest} --output-dir {args.output_dir}")
-    print(f"   2. 按 PLAN.md 执行 sessions_spawn")
+    print(f"   2. 按 PLAN.md 执行 [DISPATCH] 指令")
     print(f"   3. python3 scripts/plan-tracker.py sync --checkpoint {args.output_dir}/.checkpoint.json --output-dir {args.output_dir}")
     print(f"   4. python3 scripts/plan-tracker.py verify --plan {output_path} --checkpoint {args.output_dir}/.checkpoint.json --output-dir {args.output_dir}")
 

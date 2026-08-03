@@ -557,7 +557,7 @@ python3 generate-file-list.py /path/to/project \
 
 ```bash
 python3 generate-file-list.py /path/to/project \
-  -o ~/.openclaw/learning/projects/project-name/FILE_LIST.md
+  -o $OUTPUT_BASE/project-name/FILE_LIST.md
 ```
 
 **输出**:
@@ -593,8 +593,8 @@ todo add "分析 MemoryManager.java" --parent 1 --estimate 10
 
 ```
 # 每 5-10 个文件一组，并行派发
-sessions_spawn task="分析 Bootstrap.java, IndicesService.java..." label="file-analysis-group-1"
-sessions_spawn task="分析 MemoryManager.java..." label="file-analysis-group-2"
+[DISPATCH: task="分析 Bootstrap.java, IndicesService.java..." label="file-analysis-group-1"]
+[DISPATCH: task="分析 MemoryManager.java..." label="file-analysis-group-2"]
 ...
 ```
 
@@ -602,10 +602,10 @@ sessions_spawn task="分析 MemoryManager.java..." label="file-analysis-group-2"
 
 ```bash
 # 验证所有文件分析完成
-python3 verify-file-analysis.py ~/.openclaw/learning/projects/project-name --all
+python3 verify-file-analysis.py $OUTPUT_BASE/project-name --all
 
 # 生成汇总索引
-python3 generate-file-index.py ~/.openclaw/learning/projects/project-name
+python3 generate-file-index.py $OUTPUT_BASE/project-name
 ```
 
 ---

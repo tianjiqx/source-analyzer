@@ -61,7 +61,7 @@
 **研究目标**: [一句话描述]
 **项目路径**: `/path/to/project`
 **技术栈**: [主要语言 + 框架]
-**输出目录**: `~/.openclaw/learning/projects/project-name/`
+**输出目录**: `$OUTPUT_BASE/project-name/`
 **计划版本**: v1.0
 **预计时间**: XX 小时
 **研究方法**: [ ] 传统方法 / [x] 问题驱动方法
@@ -833,7 +833,7 @@ python3 generate-research-plan.py \
   /path/to/project \
   --depth file-level \
   --max-files 30 \
-  -o ~/.openclaw/learning/projects/project-name/RESEARCH_PLAN.md
+  -o $OUTPUT_BASE/project-name/RESEARCH_PLAN.md
 ```
 
 **生成内容**:

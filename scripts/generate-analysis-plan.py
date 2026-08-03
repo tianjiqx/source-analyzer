@@ -10,6 +10,9 @@ Usage:
 输出:
     - 分析计划文件 (ANALYSIS_PLAN.md)
     - 包含详细的任务定义、步骤、输入/输出文件
+
+环境变量:
+    SOURCE_ANALYZER_OUTPUT_BASE - 分析输出基目录（默认: ~/.openclaw/learning/projects）
 """
 
 import argparse
@@ -17,6 +20,10 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+
+# 导入路径工具（支持环境变量 SOURCE_ANALYZER_OUTPUT_BASE）
+sys.path.insert(0, str(Path(__file__).parent))
+from path_utils import get_output_dir
 
 
 def detect_build_system(project_path: Path) -> str:
@@ -446,10 +453,8 @@ def main():
     project_path = args.project_path
     project_name = os.path.basename(os.path.normpath(project_path))
     
-    if args.output_dir:
-        output_dir = args.output_dir
-    else:
-        output_dir = os.path.expanduser(f"~/.openclaw/learning/projects/{project_name}-analysis")
+    # 使用统一的路径处理（支持环境变量 SOURCE_ANALYZER_OUTPUT_BASE）
+    output_dir = get_output_dir(project_name, args.output_dir)
     
     # 验证项目路径
     if not os.path.exists(project_path):
@@ -460,7 +465,7 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     
     # 生成计划
-    plan_file = generate_analysis_plan(project_path, output_dir)
+    plan_file = generate_analysis_plan(project_path, str(output_dir))
     
     print(f"✓ Analysis plan generated: {plan_file}")
     print(f"  Output directory: {output_dir}")
