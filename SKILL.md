@@ -265,6 +265,7 @@ python3 $SKILL_DIR/scripts/verify-analysis.py output-dir --recursive
 > `[DISPATCH]` 是环境无关的派发指令。适配层负责翻译为具体实现：
 > - **OpenClaw**: `sessions_spawn(task=..., label=..., mode="run")`
 > - **opencode**: Task tool / 子进程
+> - **DSH**: `subagent` 工具（后台默认，`run_in_background=true`）
 > - **纯 CLI**: 串行执行
 > 详见 `runtime/adapter.md`
 
@@ -748,29 +749,37 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ## 执行纪律
 
-0. **📌 先注册 Goal** — 分析开始前，运行 `goal-tracker.py register` 注册任务，确保状态持久化
+0. **📌 先注册 Goal** — 分析开始前注册任务，确保状态持久化
+   （OpenClaw/CLI：`goal-tracker.py register`；**DSH：`create_goal`**）
 1. **先有计划再执行** — 递归深度分析模式必须先生成 PLAN.md 并保存到输出目录
 2. **按计划执行** — 每个派发的子任务必须引用 PLAN.md 中的 Task ID 和预期输出
-3. **追踪进度** — 使用 plan-tracker.py 维护检查点，每批完成后同步；同时运行 `goal-tracker.py update` 更新 goal 状态
+3. **追踪进度** — 使用 plan-tracker.py 维护检查点（`.checkpoint.json` 存于输出目录，作为数据跨轮引用），
+   每批完成后同步；同时更新 goal 状态（OpenClaw/CLI：`goal-tracker.py update`；**DSH：`update_goal`**）
 4. **子代理报告** — 每个子任务完成后必须生成 .task-report.json
-5. **按计划验收** — 分析完成后运行 plan-tracker.py verify，输出符合度报告
+5. **按计划验收** — 分析完成后运行 plan-tracker.py verify，输出符合度报告（DSH 可用；验收前需先对齐预期文件与实际交付）
 6. **补救缺失** — 对验收中符合度 < 80% 的任务，补充分析
-7. **📌 标记完成** — 分析完成后运行 `goal-tracker.py complete` 标记 goal 完成
+7. **📌 标记完成** — 分析完成后标记 goal 完成
+   （OpenClaw/CLI：`goal-tracker.py complete`；**DSH：`update_goal action=complete`**）
 8. **🔗 记录 Commit** — 分析完成后运行 `commit-tracker.py record` 记录当前 commit，确保后续可增量分析
 
 ### 环境适配约定
 
-- **派发子任务**: 使用 `[DISPATCH]` 行为指令（适配层翻译）
-- **等待批次**: 使用 `[WAIT]` 行为指令
+- **派发子任务**: 使用 `[DISPATCH]` 行为指令（适配层翻译；DSH → subagent 工具）
+- **等待批次**: 使用 `[WAIT]` 行为指令（DSH → 完成通知驱动，不轮询）
 - **定时恢复**: 如果环境支持（OpenClaw cron / 系统 crontab），设置自动恢复
+  （**DSH：跳过，goal 自动延续轮已承担**）
 - **路径引用**: 使用 `$SKILL_DIR` 等变量，由适配层解析为实际路径
-- 详细映射见 `runtime/adapter.md` + 对应环境适配文件
+- 详细映射见 `runtime/adapter.md` + 对应环境适配文件（DSH 见 `runtime/environments/dsh.md`）
 
 ## 🔄 弹性执行纪律（解决 LLM rate limit / 并发失败）
 
 > **核心问题**：分析大项目时 LLM 并发限制导致子任务失败 → 主 agent 停止 → 分析中止
 >
 > **解决方案**：三层防线 + 自动恢复。详见 [RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md)
+>
+> 🧩 **DSH 环境：本节全部步骤跳过** —— DSH 的断点恢复由三层原生机制天然承担：
+> **goal 自动延续轮（会话级调度）+ 持久 background subagent（跨轮存活，`send_message` 续跑）+ 输出目录（PLAN/checkpoint/task-report 数据）**。
+> 无需 `resilient-runner.py` / `setup-cron-recovery.py` / `.task-complete.json`；完成检测用 `.task-report.json` + `verify-analysis`。
 
 1. **先初始化弹性检查点** — 分析开始前运行 `resilient-runner.py --init`
 2. **如环境支持定时任务，设置自动恢复** — 使用 `setup-cron-recovery.py` 生成调度配置，通过环境适配层创建
@@ -793,7 +802,8 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 > **环境差异**: 弹性恢复的自动化程度取决于运行环境。  
 > OpenClaw 支持 cron + isolated session 全自动恢复。  
-> opencode / 纯 CLI 需手动重新运行 `resilient-runner.py --continue` 或通过系统 crontab 实现。
+> opencode / 纯 CLI 需手动重新运行 `resilient-runner.py --continue` 或通过系统 crontab 实现。  
+> **DSH：全部跳过**（goal 自动延续轮 + 持久 subagent + 输出目录承担，见 `runtime/environments/dsh.md`）。
 
 详见 [guides/PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md)
 
