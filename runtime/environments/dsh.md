@@ -64,3 +64,28 @@
   不再误报 EXTRA_END。
 - 禁止词检查会剥离代码块与行内代码后再扫描，合法包名（如 `todo`）不再误报；
   仍有个例可用 `--forbidden-allow` 显式豁免。
+
+---
+
+## 防中断辅助程序在 DSH 中的冗余对照
+
+skill 为"分析过程不中断"准备了多个辅助程序，**在 DSH 中基本冗余**——
+DSH 的断点恢复由三层原生机制天然承担：**goal 自动延续轮 + 持久 background subagent + 输出目录**。
+
+| 防中断关切 | skill 程序 | DSH 原生替代 | 是否使用 |
+|-----------|-----------|-------------|---------|
+| 进度持久化 | `goal-tracker.py`（`$WORKSPACE/active-goals.json`） | 原生 goal 工具（`create_goal`/`update_goal`/`get_goal`），自动延续轮即恢复 | ❌ 不用（避免双机制重复） |
+| 断点续传/重试 | `resilient-runner.py`（检查点+指数退避+`--continue`） | goal 轮次 + subagent 持久（跨轮存活，`send_message` 续跑）+ 主 agent 即 runner | ❌ 不用 |
+| 定时恢复 | `setup-cron-recovery.py`（cron 配置） | goal 自动延续轮 = 内置调度器，无需外部 cron | ❌ 不用 |
+| 编排+健康检查 | `orchestrator.py` | agent 自编排 subagent；`list_agents` 查状态；完成通知驱动 | ❌ 不用 |
+| 完成签名 | `.task-complete.json` | `.task-report.json`（子代理报告）+ `verify-analysis` | ❌ 换成报告 |
+
+**保留价值的部分**（作为数据/生成器，而非防中断机制）：
+- `plan-tracker.py verify` → 可选验收工具（验收前需先修正预期文件估算与派发提示不一致的问题）；
+- `recursive-orchestrator.py` / `generate-module-manifest.py` → PLAN/清单**生成器**，可用；
+- `.checkpoint.json` / `.task-report.json` → 作为**数据**存于输出目录，跨轮引用。
+
+**DSH 中断恢复实操**（实测有效）：
+1. 会话中断 → 重启后 goal 自动延续轮携带 objective 恢复，先 `get_goal` 确认状态；
+2. 子代理中断（空消息）→ `send_message` 续跑（附产出检查清单）；
+3. 无法恢复的子代理 → 主 agent 手动补齐关键产出（INDEX.md + 报告）并注明。
