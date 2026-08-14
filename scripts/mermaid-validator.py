@@ -281,28 +281,61 @@ def check_node_syntax_flowchart(diagram: Diagram):
                     ))
 
 
+# sequenceDiagram 中需要 end 闭合的块关键字（alt/opt/loop/par/rect/critical/break）
+# 注意：else/and/option 是块内分隔符，不单独开块，不计入配对
+SEQ_BLOCK_KEYWORDS = ('alt', 'opt', 'loop', 'par', 'rect', 'critical', 'break')
+
+
+def _is_seq_block_start(stripped_lower: str) -> bool:
+    """判断行是否为 sequenceDiagram 块起始（alt/opt/loop/par/rect/critical/break）"""
+    for kw in SEQ_BLOCK_KEYWORDS:
+        if stripped_lower == kw:
+            return True
+        if stripped_lower.startswith(kw + ' '):
+            return True
+        if stripped_lower.startswith(kw + ':'):
+            return True
+    return False
+
+
 def check_subgraph_pairing(diagram: Diagram):
-    """规则 3: subgraph/end 配对检查"""
+    """规则 3: subgraph/end 配对检查（sequenceDiagram 识别 alt/loop/par 等块）"""
     lines = diagram.raw.split('\n')
     depth = 0
-    
+
     for i, line in enumerate(lines):
         stripped = line.strip().lower()
-        if stripped.startswith('subgraph'):
-            depth += 1
-        elif stripped == 'end' or stripped.startswith('end '):
-            depth -= 1
-            if depth < 0:
-                diagram.issues.append(DiagramIssue(
-                    line=i+1, column=0, severity='error', rule='EXTRA_END',
-                    message='多余的 end（没有对应的 subgraph）',
-                    context=line.strip(),
-                ))
-    
+
+        if diagram.diagram_type == 'sequenceDiagram':
+            # sequenceDiagram：alt/opt/loop/par/rect/critical/break 需要 end 闭合
+            # else/and/option 是块内分隔符，不计入
+            if _is_seq_block_start(stripped):
+                depth += 1
+            elif stripped == 'end' or stripped.startswith('end '):
+                depth -= 1
+                if depth < 0:
+                    diagram.issues.append(DiagramIssue(
+                        line=i + 1, column=0, severity='error', rule='EXTRA_END',
+                        message='多余的 end（没有对应的 alt/opt/loop/par/rect/critical/break 块）',
+                        context=line.strip(),
+                    ))
+        else:
+            # 其他类型：subgraph/end 配对
+            if stripped.startswith('subgraph'):
+                depth += 1
+            elif stripped == 'end' or stripped.startswith('end '):
+                depth -= 1
+                if depth < 0:
+                    diagram.issues.append(DiagramIssue(
+                        line=i + 1, column=0, severity='error', rule='EXTRA_END',
+                        message='多余的 end（没有对应的 subgraph）',
+                        context=line.strip(),
+                    ))
+
     if depth > 0:
         diagram.issues.append(DiagramIssue(
             line=len(lines), column=0, severity='error', rule='MISSING_END',
-            message=f'缺少 {depth} 个 end（subgraph 未闭合）',
+            message=f'缺少 {depth} 个 end（块未闭合）',
             context='',
             fix=f'在对应位置添加 {depth} 个 end',
         ))

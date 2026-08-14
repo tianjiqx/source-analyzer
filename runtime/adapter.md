@@ -18,6 +18,7 @@
 │   环境实现 (可选/可扩展)                      │
 │  ├── openclaw.md   (sessions_spawn/cron)    │
 │  ├── opencode.md   (Task tool/进程)          │
+│  ├── dsh.md        (subagent/原生 goal)      │
 │  ├── claude-code.md (Task tool)              │
 │  └── standalone.md (纯 CLI/无并行)           │
 └─────────────────────────────────────────────┘
@@ -50,12 +51,19 @@ Skill 的核心分析逻辑，定义"做什么"：
 | `task.list` | 查看活跃子任务状态 | ✅ |
 | `progress.persist` | 持久化分析进度 | ✅ |
 | `progress.restore` | 恢复中断的分析 | ✅ |
+| `progress.check` | 会话开始时检查未完成任务 | ❌ |
 | `schedule.recurring` | 设置定时恢复任务 | ❌ |
 | `schedule.remove` | 移除定时任务 | ❌ |
 | `notify.silent` | 静默返回（不打扰用户） | ❌ |
+| `memory.write` | 写入长期记忆文件（如 `$WORKSPACE/MEMORY.md`） | ❌ |
+| `db.update` | 更新对比数据库（`$SKILL_DIR/references/project-comparison-db.md`） | ❌ |
 | `file.write` | 写入文件 | ✅ |
 | `file.read` | 读取文件 | ✅ |
 | `shell.exec` | 执行 Shell 命令 | ✅ |
+
+> ⚠️ `memory.write` / `db.update` / `schedule.recurring` / `progress.check` / `notify.silent`
+> 均为**可选钩子**：环境不支持时必须**显式跳过**并在 VERSION.md 记录原因，
+> 禁止"为了完成闭环而假执行"（写入无消费者消费的文件）。
 
 ### Layer 3: 能力 (Capability) — 环境实现
 
@@ -67,19 +75,56 @@ Skill 的核心分析逻辑，定义"做什么"：
 - task.wait → `sessions_yield(message="等待批次完成")`
 - schedule.recurring → `cron(action=add, job={sessionTarget:"isolated", ...})`
 - notify.silent → `NO_REPLY`
+- memory.write → `$WORKSPACE/MEMORY.md`
+- db.update → `$SKILL_DIR/references/project-comparison-db.md`（假设 skill 目录可写）
 
 ## opencode 环境
 - task.dispatch → 通过 Task tool 或 fork 子进程
 - task.wait → 等待 Task 完成 / 进程 join
 - schedule.recurring → 系统 crontab
 - notify.silent → 空输出
+- memory.write → `$WORKSPACE/MEMORY.md`
+- db.update → 同 OpenClaw（依赖 skill 目录可写）
+
+## DSH 环境 (DeepSeek Harness)
+- task.dispatch → `subagent` 工具（后台默认），峰值并发 12-20（实测 20 稳定）
+- task.wait → 等待 subagent 完成通知（禁止空轮询）
+- task.list → `list_agents`（children/descendants）
+- progress.persist/restore → **原生 goal 工具**（`create_goal`/`update_goal`/`get_goal`），自动延续轮次即断点恢复
+- progress.check → 由 goal 自动延续轮承担（无需手动检查）
+- schedule.recurring → ❌ 不支持（goal 轮次已承担自动恢复，cron 冗余）
+- notify.silent → ❌ 不支持（本会话上下文即通知通道）
+- memory.write → ❌ 不支持（无长期记忆消费者；恢复依赖 goal 轮次 + 输出目录，写入 MEMORY.md 是假闭环）
+- db.update → ❌ 不支持（`$SKILL_DIR` 通常只读挂载）
+- file.write → 仅会话工作区可写（其余路径多为只读挂载，需先探测）
+- 中断恢复：子代理空消息失败 → `send_message` 续跑（附产出检查清单）；主 agent 手动补齐兜底（INDEX.md + .task-report.json）
 
 ## 纯 CLI 环境 (无 agent 框架)
 - task.dispatch → 串行执行（无并行）
 - task.wait → N/A（同步）
 - schedule.recurring → 系统 crontab
 - notify.silent → N/A
+- memory.write → 用户指定路径（默认跳过）
+- db.update → 依赖 skill 目录可写（只读则跳过）
 ```
+
+---
+
+## 环境能力矩阵
+
+闭环节 B 组可选钩子与恢复机制，按环境对照（❌ = 显式跳过并记录，禁止假执行）：
+
+| 能力 | openclaw.md | opencode.md | **dsh.md** | standalone |
+|------|-------------|-------------|------------|------------|
+| `task.dispatch` | sessions_spawn | Task tool/进程 | **subagent 工具（后台）** | 串行 |
+| `task.wait` | sessions_yield | 进程 join | **完成通知驱动** | 同步 |
+| `progress.persist/restore` | goal-tracker.py | goal-tracker.py | **原生 goal 工具** | goal-tracker.py |
+| `progress.check` | cron 心跳 | 手动 | **goal 轮次承担** | 手动 |
+| `schedule.recurring` | cron + isolated | 系统 crontab | **❌（goal 轮次承担）** | 系统 crontab |
+| `notify.silent` | NO_REPLY | 空输出 | **❌（会话即上下文）** | N/A |
+| `memory.write` | `$WORKSPACE/MEMORY.md` | 同左 | **❌（无消费者）** | 用户指定/跳过 |
+| `db.update` | `$SKILL_DIR/references/` | 同左 | **❌（目录只读）** | 同左（只读跳过） |
+| 状态文件路径 | `$WORKSPACE/active-goals.json` | 同左 | **❌（用原生 goal）** | 需 `SOURCE_ANALYZER_GOALS_FILE` 重定向 |
 
 ---
 

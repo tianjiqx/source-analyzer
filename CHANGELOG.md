@@ -1,5 +1,49 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-08-14 - 🧩 环境适配与验证器修复（DSH 实测驱动）
+
+### 🎯 概述
+
+依据在 DeepSeek Harness（DSH）环境中执行 deepseek-harness 递归深度分析（36 模块）的全流程实测，
+将环境特定动作从"必做闭环"中剥离为可选钩子，并修复验证器与产出结构不符的问题。
+
+### 🔑 关键变更
+
+1. **闭环重构**：SKILL.md「执行闭环」拆分为 **A. 通用核心闭环**（进度完成/commit/VERSION/按模式验证）
+   与 **B. 可选环境钩子**（memory.write / db.update / scheduler / progress.check / notify.silent），
+   环境不支持时**显式跳过并记录**，禁止假闭环（如 DSH 无记忆消费者，不再写 MEMORY.md）。
+2. **Goal 机制适配**：进度持久化机制由适配层提供——OpenClaw/opencode 用 goal-tracker.py
+   （路径可用 `SOURCE_ANALYZER_GOALS_FILE` 覆盖），**DSH 用原生 goal 工具**（create_goal/update_goal/get_goal）。
+3. **新增 DSH 环境适配**：`runtime/environments/dsh.md`（subagent 派发/通知驱动等待/中断恢复协议/
+   峰值并发 12-20/只读 skill 目录的处理）。
+4. **mermaid-validator.py**：`check_subgraph_pairing` 支持 sequenceDiagram 的
+   alt/opt/loop/par/rect/critical/break 块闭合（else/and/option 为块内分隔符），消除 EXTRA_END 误报。
+5. **verify-analysis.py**：
+   - `--recursive` 模块计数改为**递归扫描含 INDEX.md 的目录**（支持 `packages/<family>/<module>` 嵌套，
+     按 realpath 去重，无需符号链接兼容层）；
+   - `--all` 必需文件支持 **00-project-level/ 回退**（递归模式布局不再报 7 文件缺失）；
+   - 禁止词检查**剥离代码块/行内代码**且拉丁词**大小写敏感**（工具名 `todo` 不再误报为 TODO），
+     新增 `--forbidden-allow` 豁免参数；
+   - INDEX 一致性升级：收集**任意层级 INDEX** 的引用 + **目录链接覆盖**其下全部文件 +
+     孤儿检查排除导航/元/工作文件（PLAN/VERSION/报告/task-prompts），大语料不再误报数百孤儿。
+
+### 📦 新增文件
+
+| 文件 | 说明 |
+|------|------|
+| `runtime/environments/dsh.md` | 🧩 DSH 环境适配：行为映射、能力矩阵、闭环节钩子处理、子代理中断恢复协议 |
+
+### 📝 修改文件
+
+| 文件 | 说明 |
+|------|------|
+| `SKILL.md` | 执行闭环重构（A/B 两层）；Goal 持久化协议改为适配层机制；新增 DSH 机制说明 |
+| `runtime/adapter.md` | 行为接口新增 memory.write/db.update/progress.check；新增 DSH 环境实现与环境能力矩阵 |
+| `scripts/mermaid-validator.py` | sequenceDiagram 块闭合配对修复 |
+| `scripts/verify-analysis.py` | 递归计数/项目级回退/禁止词/INDEX 一致性四项修复 |
+
+---
+
 ## 2026-08-04 - 🔗 Commit 追踪与增量分析
 
 ### 🎯 概述

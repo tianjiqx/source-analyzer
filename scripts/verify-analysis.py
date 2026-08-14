@@ -62,8 +62,21 @@ REQUIRED_FILES = {
 }
 
 
+# 孤儿检查排除的元/工作文件（非分析内容，无需被 INDEX 导航）
+ORPHAN_EXCLUDE_NAMES = {
+    'INDEX.md',                     # 导航文件本身
+    'PLAN.md', 'PLAN_FULL.md',      # 计划
+    'VERSION.md',                   # 版本记录
+    'CONVENTIONS.md',               # 写作约定
+    'VERIFICATION_REPORT.md', 'PLAN_VERIFICATION_REPORT.md',
+    'RECURSIVE_MODE_REPORT.md', 'MAXIMUM_MODE_REPORT.md',
+    'MERMAID_VALIDATION_REPORT.md', # 验证报告
+}
+ORPHAN_EXCLUDE_DIRS = {'task-prompts'}  # 工作目录（派发提示等）
+
+
 def extract_links_from_markdown(content: str) -> list:
-    """从 Markdown 内容中提取所有相对链接（.md 文件）"""
+    """从 Markdown 内容中提取所有相对链接（.md 文件与目录链接）"""
     # 匹配 [text](path) 和 [text](path#anchor)
     pattern = r'\[([^\]]*)\]\(([^)]+)\)'
     links = []
@@ -71,8 +84,8 @@ def extract_links_from_markdown(content: str) -> list:
         text, path = match.group(1), match.group(2)
         # 去除 anchor (#xxx) 和 query (?xxx)
         path = path.split('#')[0].split('?')[0]
-        # 只关注 .md 文件
-        if path.endswith('.md') and not path.startswith('http'):
+        # 关注 .md 文件与目录链接（以 / 结尾）
+        if (path.endswith('.md') or path.endswith('/')) and not path.startswith('http'):
             links.append({'text': text, 'path': path})
     return links
 
@@ -81,14 +94,15 @@ def check_index_consistency(analysis_dir: Path) -> dict:
     """检查 INDEX.md 与实际文件的一致性
 
     检测两类问题：
-    1. 幽灵引用：INDEX.md 中引用了文件，但文件实际不存在
-    2. 孤儿文件：文件实际存在，但 INDEX.md 中未引用
+    1. 幽灵引用：任意 INDEX.md 引用了文件，但文件实际不存在
+    2. 孤儿文件：文件实际存在，但**任何层级**的 INDEX.md 均未引用
+       （根 INDEX + 各模块目录内的 INDEX 都计入，适合 600+ 文件的大语料）
     """
     result = {
         'index_exists': False,
         'total_links': 0,
         'phantom_refs': [],      # INDEX 有但文件不存在
-        'orphan_files': [],      # 文件存在但 INDEX 未引用
+        'orphan_files': [],      # 文件存在但任何 INDEX 均未引用
         'valid_links': 0,
         'details': [],
     }
@@ -99,34 +113,55 @@ def check_index_consistency(analysis_dir: Path) -> dict:
         return result
 
     result['index_exists'] = True
-    content = index_path.read_text()
-    links = extract_links_from_markdown(content)
-    result['total_links'] = len(links)
 
-    # 检查每个引用是否对应实际文件
+    # 收集所有 INDEX.md（根 + 任意层级，如 10-module-deep/<module>/INDEX.md）
+    index_files = [index_path]
+    for nested in analysis_dir.rglob('INDEX.md'):
+        if nested == index_path:
+            continue
+        rel = nested.relative_to(analysis_dir)
+        if any(part.startswith('.') for part in rel.parts):
+            continue
+        index_files.append(nested)
+    result['details'].append(f'索引文件数: {len(index_files)}（根 + 模块级）')
+
+    # 汇总所有 INDEX 的引用
     referenced_paths = set()
-    for link in links:
-        ref_path = link['path']
-        # 解析相对路径（相对于 INDEX.md 所在目录）
-        abs_path = (index_path.parent / ref_path).resolve()
-        referenced_paths.add(str(abs_path))
+    for index_file in index_files:
+        content = index_file.read_text()
+        links = extract_links_from_markdown(content)
+        result['total_links'] += len(links)
+        for link in links:
+            ref_path = link['path']
+            # 解析相对路径（相对于该 INDEX.md 所在目录）
+            abs_path = (index_file.parent / ref_path).resolve()
+            if abs_path.is_dir():
+                # 目录链接（如 [00-project-level/](00-project-level/)）：
+                # 视为覆盖该目录下全部 .md 文件（该目录是导航单元，内部由自身/子 INDEX 负责）
+                referenced_paths.update(str(f.resolve()) for f in abs_path.rglob('*.md'))
+                result['valid_links'] += 1
+                continue
+            referenced_paths.add(str(abs_path))
+            if abs_path.exists():
+                result['valid_links'] += 1
+            else:
+                result['phantom_refs'].append({
+                    'text': link['text'],
+                    'path': ref_path,
+                    'resolved': str(abs_path),
+                    'index': str(index_file.relative_to(analysis_dir)),
+                })
 
-        if abs_path.exists():
-            result['valid_links'] += 1
-        else:
-            result['phantom_refs'].append({
-                'text': link['text'],
-                'path': ref_path,
-                'resolved': str(abs_path),
-            })
-
-    # 反向检查：扫描所有 .md 文件，找出未被 INDEX.md 引用的
+    # 反向检查：扫描所有 .md 文件，找出未被任何 INDEX 引用的
     all_md_files = set()
     for md_file in analysis_dir.rglob('*.md'):
-        # 排除验证报告自身和隐藏文件
-        if md_file.name in ('VERIFICATION_REPORT.md', 'MAXIMUM_MODE_REPORT.md', 'INDEX.md'):
+        rel = md_file.relative_to(analysis_dir)
+        # 排除验证报告自身、导航/元/工作文件、隐藏文件
+        if md_file.name in ORPHAN_EXCLUDE_NAMES:
             continue
-        if any(part.startswith('.') for part in md_file.relative_to(analysis_dir).parts):
+        if any(part in ORPHAN_EXCLUDE_DIRS for part in rel.parts):
+            continue
+        if any(part.startswith('.') for part in rel.parts):
             continue
         all_md_files.add(str(md_file.resolve()))
 
@@ -189,16 +224,26 @@ def format_index_consistency_detail(index_consistency: dict) -> str:
     return "\n".join(lines)
 
 
+def resolve_required_file(analysis_dir: Path, filename: str) -> Path:
+    """解析必需文件路径：优先根目录，其次 00-project-level/（递归模式布局）"""
+    root_path = analysis_dir / filename
+    if root_path.exists():
+        return root_path
+    project_level = analysis_dir / '00-project-level' / filename
+    return project_level
+
+
 def check_file_exists(analysis_dir: Path, filename: str) -> dict:
     """检查文件是否存在"""
-    filepath = analysis_dir / filename
+    filepath = resolve_required_file(analysis_dir, filename)
     exists = filepath.exists()
-    
+
     return {
         "file": filename,
         "exists": exists,
         "size": filepath.stat().st_size if exists else 0,
         "status": "✅" if exists else "❌",
+        "resolved": str(filepath),
     }
 
 
@@ -212,11 +257,33 @@ def check_sections(content: str, required_sections: list) -> list:
     return missing
 
 
+# 禁止词豁免列表（命令行 --forbidden-allow 可追加；用于包名等合法词汇，如 todo）
+FORBIDDEN_ALLOW = []
+
+
+def strip_code(content: str) -> str:
+    """剥离 fenced 代码块与行内代码，避免目录树/包名/源码引用被误判为占位符"""
+    # 剥离 fenced 代码块（``` ... ```）
+    content = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+    # 剥离行内代码 `...`
+    content = re.sub(r'`[^`]*`', '', content)
+    return content
+
+
 def check_forbidden(content: str, forbidden_words: list) -> list:
-    """检查禁止词"""
+    """检查禁止词（先剥离代码块/行内代码；FORBIDDEN_ALLOW 内的词不报）
+
+    大小写语义：拉丁词（TODO/TBD/xxx）大小写敏感匹配，
+    避免把小写名词（如工具名 todo、包名 workflow）误判为占位符；
+    中文词（待补充）无大小写，直接匹配。
+    """
     found = []
+    stripped = strip_code(content)
     for word in forbidden_words:
-        if word.lower() in content.lower():
+        if word in stripped:
+            # 豁免列表：word 出现在某个豁免词内（如禁止词 TODO vs 豁免 todo_write）
+            if any(word in a for a in FORBIDDEN_ALLOW):
+                continue
             found.append(word)
     return found
 
@@ -319,8 +386,8 @@ def check_distillation_sections(content: str) -> dict:
 
 def check_file_content(analysis_dir: Path, filename: str) -> dict:
     """检查单个文件内容"""
-    filepath = analysis_dir / filename
-    
+    filepath = resolve_required_file(analysis_dir, filename)
+
     if not filepath.exists():
         return {
             "file": filename,
@@ -878,8 +945,16 @@ def check_recursive_mode(analysis_dir: str) -> dict:
     # 3. 检查模块深度分析
     module_deep_dir = analysis_path / "10-module-deep"
     if module_deep_dir.exists():
-        # 统计模块目录
-        module_dirs = [d for d in module_deep_dir.iterdir() if d.is_dir() and not d.name.startswith('_')]
+        # 统计模块目录：递归扫描含 INDEX.md 的目录（支持 packages/<family>/<module> 嵌套，
+        # 及符号链接兼容层），按 realpath 去重避免重复计数
+        seen = set()
+        module_dirs = []
+        for index_file in module_deep_dir.rglob("INDEX.md"):
+            real = index_file.parent.resolve()
+            if real in seen:
+                continue
+            seen.add(real)
+            module_dirs.append(index_file.parent)
         result["module_count"] = len(module_dirs)
         
         # 检查每个模块的完整性
@@ -1047,8 +1122,12 @@ def main():
     parser.add_argument("--all", action="store_true", help="Check both completeness and quality (default)")
     parser.add_argument("--maximum", action="store_true", help="Check if analysis meets maximum mode requirements")
     parser.add_argument("--recursive", action="store_true", help="Check if analysis meets recursive deep analysis mode requirements")
-    
+    parser.add_argument("--forbidden-allow", default="", help="禁止词豁免列表（逗号分隔，如：todo,workflow）")
+
     args = parser.parse_args()
+
+    if args.forbidden_allow:
+        FORBIDDEN_ALLOW.extend(w.strip() for w in args.forbidden_allow.split(',') if w.strip())
     
     analysis_dir = args.analysis_dir
     

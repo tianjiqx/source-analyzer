@@ -65,7 +65,14 @@ Skill 中使用路径变量，由适配层解析：
 
 > **核心问题**：分析任务耗时长（4-8h），会话中断后 goal 状态丢失，进度无法恢复。
 >
-> **解决方案**：任务状态持久化到文件 `$WORKSPACE/active-goals.json`，每次会话开始时检查未完成任务。
+> **解决方案**：任务状态持久化，每次会话开始时检查未完成任务。
+>
+> **机制由适配层提供**：
+> - **OpenClaw / opencode**：`goal-tracker.py` 写入 `$WORKSPACE/active-goals.json`；
+>   状态文件路径可用环境变量 `SOURCE_ANALYZER_GOALS_FILE` 覆盖（无 OpenClaw workspace 的环境必须设置）。
+> - **DSH（DeepSeek Harness）**：使用**原生 goal 工具**（`create_goal` / `update_goal` / `get_goal`），
+>   自动延续轮次即断点恢复，**不使用** goal-tracker.py（避免双机制重复）。
+> - **纯 CLI**：使用 `goal-tracker.py`（重定向状态文件到可写位置）。
 
 ### 执行前：注册 Goal（必做）
 
@@ -934,17 +941,20 @@ python3 $SKILL_DIR/scripts/commit-tracker.py history \
 
 ## 执行闭环
 
-分析完成后，必须完成以下闭环动作：
+分析完成后执行以下闭环动作。**A 组为通用核心闭环（所有环境必做）**；
+**B 组为可选环境钩子（由适配层能力矩阵声明，环境不支持时显式跳过并在 VERSION.md 记录"已跳过及原因"，禁止假装完成）**。
+能力矩阵见 [runtime/adapter.md](runtime/adapter.md)。
 
-### 0. 📌 标记 Goal 完成（必做，最先执行）
+### A. 通用核心闭环（必做）
 
-```bash
-python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"
-```
+### A0. 📌 标记进度完成（最先执行，机制由适配层提供）
+
+- **OpenClaw / opencode**：`python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"`
+- **DSH（DeepSeek Harness）**：使用原生 goal 工具（`update_goal action=complete`），不使用 goal-tracker.py
 
 确保任务状态从 `in_progress` 变为 `completed`，避免下次会话误判为未完成。
 
-### 0.5. 🔗 记录 Commit（必做）
+### A1. 🔗 记录 Commit（必做）
 
 ```bash
 python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
@@ -954,9 +964,53 @@ python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
 
 确保 `project-meta.json` 和 `commit-history.json` 记录了本次分析对应的 commit，后续可增量分析。
 
-### 1. 回写记忆文件
+### A2. 创建版本记录（必做）
 
-将分析结果写入长期记忆文件（路径由适配层决定，OpenClaw 默认 `$WORKSPACE/MEMORY.md`）：
+复制 `$SKILL_DIR/templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`，
+填入 commit 信息（从 `project-meta.json` 获取）。
+
+```bash
+# 参考 commit-tracker.py info 获取当前 commit 信息
+python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
+```
+
+> VERSION.md 同时用于记录 B 组可选钩子的跳过原因（见 B 组说明）。
+
+### A3. 验证完整性（必做，按分析模式选命令）
+
+- **递归深度模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --recursive`
+- **标准 / 最大化模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all`
+
+检查：
+- ✅ 文件完整性
+- ✅ INDEX.md 一致性（无幽灵引用；孤儿文件按"任意层级 INDEX 覆盖"判定，见脚本说明）
+- ✅ 内容质量分数
+
+> `--all` 的项目级模板检查（顶层 `00-README.md` 等）仅适用于标准模式产出布局；
+> 递归模式产出（`00-project-level/` 等）以 `--recursive` 为准，`--all` 会误报缺失章节，不追改关键词。
+
+详见 [guides/EXECUTION_CLOSURE.md](guides/EXECUTION_CLOSURE.md)
+
+### B. 可选环境钩子（适配层能力矩阵声明；不支持则显式跳过）
+
+| 钩子 | 能力接口 | 用途 | 跳过时记录位置 |
+|------|----------|------|---------------|
+| 记忆回写 | `memory.write` | 长期记忆文件（OpenClaw 默认 `$WORKSPACE/MEMORY.md`） | VERSION.md「可选钩子跳过记录」 |
+| 对比数据库 | `db.update` | 更新 `$SKILL_DIR/references/project-comparison-db.md` | VERSION.md 同上 |
+| 定时恢复 | `schedule.recurring` | 断点自动恢复（OpenClaw cron / 系统 crontab） | VERSION.md 同上 |
+| 会话检查 | `progress.check` | 会话开始时检查未完成任务 | — |
+| 完成通知 | `notify.silent` | 完成/异常通知用户 | — |
+
+**执行规则**：
+1. 先查适配层能力矩阵（[runtime/adapter.md](runtime/adapter.md)）确认环境是否支持该钩子；
+2. 支持 → 按对应环境实现执行；
+3. 不支持（如 DSH：无记忆消费者、skill 目录只读、goal 轮次已承担恢复）→ **跳过**，并在 VERSION.md 追加一行说明，如：`- 可选钩子跳过：memory.write（DSH 无长期记忆消费者，恢复依赖原生 goal 轮次 + 输出目录）`；
+4. 禁止为了"完成闭环"而写入无消费者消费的文件（假闭环）。
+
+### B1. 回写记忆文件（可选钩子 `memory.write`）
+
+**仅当环境适配层声明 `memory.write` 能力时执行**（如 OpenClaw：`$WORKSPACE/MEMORY.md`）。
+DSH 等无长期记忆消费者的环境**跳过**（恢复机制 = 原生 goal 轮次 + 输出目录的 PLAN/checkpoint）。
 
 ```markdown
 ### [项目名] - [定位] (日期)
@@ -968,32 +1022,10 @@ python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
 **状态**: ✅ 完成 / 🚧 进行中
 ```
 
-### 2. 更新对比数据库
+### B2. 更新对比数据库（可选钩子 `db.update`）
 
+**仅当 `$SKILL_DIR` 可写时执行**（只读环境跳过，如 DSH 挂载只读的 skill 目录）。
 编辑 `$SKILL_DIR/references/project-comparison-db.md`，添加新项目和对比维度。
-
-### 3. 创建版本记录
-
-复制 `$SKILL_DIR/templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`，
-填入 commit 信息（从 `project-meta.json` 获取）。
-
-```bash
-# 参考 commit-tracker.py info 获取当前 commit 信息
-python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
-```
-
-### 4. 验证完整性
-
-```bash
-python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all
-```
-
-检查：
-- ✅ 文件完整性
-- ✅ INDEX.md 一致性（无幽灵引用、无孤儿文件）
-- ✅ 内容质量分数
-
-详见 [guides/EXECUTION_CLOSURE.md](guides/EXECUTION_CLOSURE.md)
 
 ---
 
