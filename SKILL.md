@@ -660,6 +660,7 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | `generate-file-list.py` | 自动识别关键文件，生成文件列表 |
 | `generate-module-manifest.py` | 🔁 生成模块清单 - 识别所有模块并评估规模（递归分析专用） |
 | `recursive-orchestrator.py` | 🔁 递归深度分析编排器 v2 - 生成计划驱动的 PLAN.md |
+| `commit-tracker.py` | 🔗 **Commit 追踪器** - 获取/记录/对比 Git commit，支持增量分析 |
 | `mermaid-validator.py` | 🎨 Mermaid 图表语法检验器（11 条规则） |
 | `plan-tracker.py` | 📋 计划追踪器 - 检查点管理、进度同步、计划验收 |
 | `detect-project-type.py` | 自动检测项目类型（LLM Agent/Database/Web） |
@@ -748,6 +749,7 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 5. **按计划验收** — 分析完成后运行 plan-tracker.py verify，输出符合度报告
 6. **补救缺失** — 对验收中符合度 < 80% 的任务，补充分析
 7. **📌 标记完成** — 分析完成后运行 `goal-tracker.py complete` 标记 goal 完成
+8. **🔗 记录 Commit** — 分析完成后运行 `commit-tracker.py record` 记录当前 commit，确保后续可增量分析
 
 ### 环境适配约定
 
@@ -814,6 +816,122 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ---
 
+## 🔗 Commit 追踪与增量分析
+
+> **核心问题**：项目持续迭代，过段时间后分析文档与实际代码脱节。
+>
+> **解决方案**：每次分析自动记录 Git commit hash，后续可快速检测变更并针对性增量分析。
+
+### 分析前：记录 Commit（必做）
+
+分析开始时，自动获取并记录当前 commit：
+
+```bash
+# smart-analyze.py 已自动记录 commit 到 project-meta.json
+# 手动记录（或更新）：
+python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name \
+  --analysis-mode recursive_deep
+```
+
+输出到 `project-meta.json`:
+```json
+{
+  "commit_hash": "abc123...",
+  "commit_short": "abc123d",
+  "commit_date": "2026-08-04T12:00:00+08:00",
+  "commit_subject": "feat: add new feature",
+  "branch": "main",
+  "tag": "v1.2.3",
+  "last_analyzed_at": "2026-08-04T18:00:00"
+}
+```
+
+同时追加到 `commit-history.json`（完整分析历史）。
+
+### 会话恢复：检查是否需要增量分析
+
+```bash
+# 检查项目是否有新提交
+python3 $SKILL_DIR/scripts/commit-tracker.py status /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name
+```
+
+输出示例（有变更时退出码为 2）：
+```
+⚠️  检测到项目更新!
+   上次分析: abc123d (2026-08-01)
+   当前版本: def456g (2026-08-04)
+   新增提交: 15 个
+   文件变更: +12 ~8 -3 (共 23 个)
+
+   建议增量分析以下模块/文件:
+     • core/engine: +5 ~3
+     • api/handler: +4 ~2
+     • utils: +3 ~3
+```
+
+### 查看详细变更
+
+```bash
+# 列出所有变更文件
+python3 $SKILL_DIR/scripts/commit-tracker.py diff /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name --show-stat
+
+# JSON 输出（供脚本消费）
+python3 $SKILL_DIR/scripts/commit-tracker.py diff /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name --json
+```
+
+### 增量分析策略
+
+基于 diff 输出的模块变更统计，确定增量分析范围：
+
+| 变更规模 | 建议操作 |
+|----------|----------|
+| **无变更** | 无需分析 |
+| **微小变更** (< 5 文件) | 重分析变更文件 (Layer 3) |
+| **中等变更** (5-20 文件) | 重分析受影响模块 (Layer 1+3) |
+| **大范围变更** (> 20 文件) | 递归重分析受影响模块 + 跨模块总结 |
+| **架构级变更** | 重新执行完整分析（新版本号） |
+
+### 查看分析历史
+
+```bash
+python3 $SKILL_DIR/scripts/commit-tracker.py history \
+  --output-dir $OUTPUT_BASE/project-name
+```
+
+### 在 VERSION.md 中记录
+
+增量分析完成后，更新 VERSION.md（模板: `templates/VERSION_TEMPLATE.md`）：
+
+```markdown
+### v1.0 → v1.1
+- **旧 Commit**: abc123d (2026-08-01)
+- **新 Commit**: def456g (2026-08-04)
+- **新增提交**: 15
+- **变更文件**: +12 ~8 -3
+- **影响模块**: core/engine, api/handler
+- **更新文档**: 10-module-deep/core-engine/00-overview/README.md, ...
+- **更新状态**: ✅ 完成
+```
+
+### 自动化集成
+
+`smart-analyze.py` 已在 Step 0 自动获取 commit 信息并写入 `project-meta.json`。
+
+`goal-tracker.py register` 支持 `--commit-hash`/`--commit-short`/`--commit-date`/`--branch` 参数。
+
+增量分析完整闭环：
+1. `commit-tracker.py status` → 检测变更
+2. `commit-tracker.py diff` → 确定增量范围
+3. 对变更模块执行分析
+4. `commit-tracker.py record` → 更新 commit 记录
+5. 更新 VERSION.md → 记录增量分析历史
+
+---
+
 ## 执行闭环
 
 分析完成后，必须完成以下闭环动作：
@@ -825,6 +943,16 @@ python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"
 ```
 
 确保任务状态从 `in_progress` 变为 `completed`，避免下次会话误判为未完成。
+
+### 0.5. 🔗 记录 Commit（必做）
+
+```bash
+python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
+  --output-dir <analysis-dir> \
+  --analysis-mode recursive_deep
+```
+
+确保 `project-meta.json` 和 `commit-history.json` 记录了本次分析对应的 commit，后续可增量分析。
 
 ### 1. 回写记忆文件
 
@@ -846,7 +974,13 @@ python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"
 
 ### 3. 创建版本记录
 
-复制 `$SKILL_DIR/templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`。
+复制 `$SKILL_DIR/templates/VERSION_TEMPLATE.md` 到分析目录的 `VERSION.md`，
+填入 commit 信息（从 `project-meta.json` 获取）。
+
+```bash
+# 参考 commit-tracker.py info 获取当前 commit 信息
+python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
+```
 
 ### 4. 验证完整性
 
@@ -863,4 +997,4 @@ python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all
 
 ---
 
-*最后更新: 2026-07-21*
+*最后更新: 2026-08-04*

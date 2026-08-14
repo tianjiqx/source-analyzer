@@ -1,150 +1,119 @@
 # Source Analyzer Skill 更新日志
 
-## 2026-08-03 - 运行时环境适配层 + LLM Agent 模板扩展
+## 2026-08-04 - 🔗 Commit 追踪与增量分析
 
 ### 🎯 概述
 
-本次更新实现核心架构升级：
-1. **环境适配层**：Skill 分析逻辑与执行机制分离，支持多运行环境（OpenClaw / opencode / CLI）
-2. **LLM Agent 模板扩展**：从 11 维度扩展到完整体系，新增上下文工程、工具系统、约束系统、规划推理、验证自愈、多代理、可观测性、评估框架等专项分析
+本次更新解决核心问题：**项目持续迭代，分析文档与实际代码脱节，无法系统性进行增量分析。**
+
+新增 Git commit 追踪机制，每次分析自动记录 commit hash，后续可快速检测变更并针对性增量分析。
+
+### 📦 新增文件
+
+| 文件 | 大小 | 说明 |
+|------|------|------|
+| `scripts/commit-tracker.py` | 17KB | 🔗 **Commit 追踪器** — 5 个子命令（info/record/status/diff/history），支持获取 commit、记录到分析目录、检测变更、对比差异、查看历史 |
 
 ### 📝 修改文件
 
 | 文件 | 说明 |
 |------|------|
-| `SKILL.md` | 新增「🔌 运行时环境适配」章节（环境检测、适配层、行为指令、路径变量）；特性表新增环境适配；Goal 章节更新路径变量 |
-| `scripts/smart-analyze.py` | 适配环境无关设计，支持多运行环境 |
-| `scripts/goal-tracker.py` | 路径参数改为环境变量 |
-| `scripts/orchestrator.py` | 适配层集成 |
-| `scripts/recursive-orchestrator.py` | PLAN.md 生成使用行为指令标签 |
-| `scripts/resilient-runner.py` | 环境无关任务派发指令 |
-| `scripts/setup-cron-recovery.py` | 通用调度配置生成 |
-| `scripts/generate-analysis-plan.py` | 适配层支持 |
-| `guides/*.md` | 多个指南文档更新适配层说明 |
+| `scripts/smart-analyze.py` | 新增 **Step 0: 获取 Git commit 信息**，自动将 commit\_hash/commit\_short/commit\_date/commit\_subject/branch/tag/remote\_url 写入 `project-meta.json` |
+| `scripts/goal-tracker.py` | `register` 命令新增 `--commit-hash`/`--commit-short`/`--commit-date`/`--branch` 参数；goal 记录 context 中包含 commit 信息；`list` 输出显示 commit |
+| `templates/VERSION_TEMPLATE.md` | 重写模板，增加 commit 完整字段（hash/short/date/subject/branch/tag）和增量分析操作指南 |
+| `SKILL.md` | 新增「🔗 Commit 追踪与增量分析」完整章节；核心特性表新增 Commit 追踪；执行纪律新增第 8 条；执行闭环新增 Step 0.5；脚本表新增 commit-tracker.py |
 
-### 📦 新增文件
+### 🔧 新增功能详解
 
-#### runtime/ 目录（环境适配层）
+#### 1. commit-tracker.py — 5 个子命令
 
-| 文件 | 大小 | 说明 |
-|------|------|------|
-| `runtime/adapter.md` | 5.8KB | 运行时环境适配协议：三层分离架构（意图/行为/能力）、环境检测协议、行为指令语法、能力接口定义 |
-| `runtime/environments/openclaw.md` | 2.9KB | OpenClaw 环境适配：sessions_spawn/cron/NO_REPLY 映射 |
-| `runtime/environments/opencode.md` | 2.6KB | opencode 环境适配：Task tool/系统 crontab/空输出映射 |
+| 命令 | 功能 | 退出码 |
+|------|------|--------|
+| `info <project>` | 获取项目当前 commit 完整信息 | 0 |
+| `record <project> --output-dir <dir>` | 记录当前 commit 到分析目录 | 0 |
+| `status <project> --output-dir <dir>` | 检查是否需要增量分析 | 0=无变化, 2=有变化 |
+| `diff <project> --output-dir <dir>` | 对比上次分析的 commit 与当前 | 0 |
+| `history --output-dir <dir>` | 查看分析目录的 commit 历史 | 0 |
 
-#### templates/llm-agent/ 扩展（新增 8 个文件）
+#### 2. smart-analyze.py — Step 0 自动获取 commit
 
-| 文件 | 说明 |
-|------|------|
-| `LLM_AGENT_03_CONTEXT_ENGINEERING.md` | 上下文工程：Token 预算、延迟加载、压缩隔离、上下文窗口优化 |
-| `LLM_AGENT_04_TOOL_SYSTEM.md` | 工具系统：工具声明、权限管道、安全边界、工具调用优化 |
-| `LLM_AGENT_05_PLANNING_REASONING.md` | 规划与推理：任务分解、规划算法、推理链、决策树 |
-| `LLM_AGENT_06_CONSTRAINT_SYSTEM.md` | 约束系统：约束分级（MUST/SHOULD/PREFER）、反理性化、遵循度保障 |
-| `LLM_AGENT_08_VERIFICATION_SELF_HEALING.md` | 验证与自愈：输出验证、错误检测、自动修复、闭环验证 |
-| `LLM_AGENT_09_MULTI_AGENT.md` | 多代理协作：Agent 间通信、协作模式、编排策略、子代理管理 |
-| `LLM_AGENT_10_OBSERVABILITY.md` | 可观测性：追踪模型、失败诊断、性能监控、日志分析 |
-| `LLM_AGENT_11_EVALUATION_FRAMEWORK.md` | 评估框架：评估指标、测试方法、基准测试、质量度量 |
+新增 Step 0（在项目类型检测之前），自动获取 Git commit 信息：
+- commit\_hash / commit\_short / commit\_date / commit\_subject
+- branch / tag / remote\_url / total\_files\_in\_repo
+- last\_analyzed\_at
 
-#### 其他新增文件
+写入 `project-meta.json`，同时在终端输出和 ANALYSIS\_PLAN.md 中显示。
 
-| 文件 | 说明 |
-|------|------|
-| `scripts/path_utils.py` | 路径工具函数（环境变量解析） |
-| `DEPENDENCY_ANALYSIS_AUDIT.md` | 依赖分析审计文档 |
+#### 3. goal-tracker.py — Goal 关联 commit
 
-### 🔌 新增功能 1: 运行时环境适配层
-
-#### 核心架构
-
-```
-┌─────────────────────────────────────────────┐
-│            SKILL.md (环境无关)               │
-│  分析方法论 · 模板 · 质量标准 · 输出规范      │
-├─────────────────────────────────────────────┤
-│         runtime/adapter.md (适配层)          │
-│  能力检测 · 任务派发 · 进度追踪 · 恢复机制    │
-├─────────────────────────────────────────────┤
-│   环境实现 (可选/可扩展)                      │
-│  ├── openclaw.md   (sessions_spawn/cron)    │
-│  ├── opencode.md   (Task tool/进程)          │
-│  └── standalone.md (纯 CLI/无并行)           │
-└─────────────────────────────────────────────┘
+`register` 新增参数：
+```bash
+python3 goal-tracker.py register \
+  --objective "深度分析项目" \
+  --project "myproject" \
+  --output-dir "~/.openclaw/learning/projects/myproject" \
+  --mode "recursive_deep" \
+  --commit-hash "abc123..." \
+  --commit-short "abc123d" \
+  --commit-date "2026-08-04T12:00:00" \
+  --branch "main"
 ```
 
-#### 三层分离原则
+`list` 输出新增 commit 信息行。
 
-| 层级 | 职责 | 环境相关性 |
-|------|------|----------|
-| **Layer 1: 意图** | 分析逻辑、模板、质量标准 | 环境无关 |
-| **Layer 2: 行为** | 任务派发、进度追踪接口 | 抽象接口 |
-| **Layer 3: 能力** | 具体实现（OpenClaw/opencode/CLI） | 环境特定 |
+#### 4. 增量分析工作流
 
-#### 行为指令标签
+```
+首次分析:
+  smart-analyze.py → Step 0 自动记录 commit → project-meta.json
+  分析完成 → commit-tracker.py record → 更新 commit-history.json
 
-Skill 中使用环境无关的行为指令，适配层翻译为具体实现：
+后续检查:
+  commit-tracker.py status → 检测是否有新提交
+  ├── 无变化 → 退出码 0，无需分析
+  └── 有变化 → 退出码 2，输出变更模块统计
 
-| 指令 | 含义 | OpenClaw 实现 | opencode 实现 |
-|------|------|---------------|---------------|
-| `[DISPATCH: ...]` | 派发子任务 | sessions_spawn | Task tool |
-| `[WAIT: ...]` | 等待批次完成 | sessions_yield | Task join |
-| `[SCHEDULE: ...]` | 定时恢复 | cron job | 系统 crontab |
-| `[NOTIFY_SILENT]` | 静默返回 | NO_REPLY | 空输出 |
+增量分析:
+  commit-tracker.py diff → 获取详细变更文件列表
+  → 按变更规模选择策略（文件级/模块级/架构级）
+  → 对变更部分重新分析
+  → commit-tracker.py record → 更新 commit 记录
+  → 更新 VERSION.md
+```
 
-#### 环境检测协议
+#### 5. 输出文件结构（新增部分）
 
-优先级：用户显式声明 > 工具可用性 > 环境探测 > 默认降级
+```
+output-dir/
+├── project-meta.json          # ← 新增 commit_* 字段
+├── commit-history.json        # ← 新增，完整分析 commit 历史
+├── VERSION.md                 # ← 更新模板，含 commit 信息
+└── ... (分析文档)
+```
 
-#### 路径变量
+#### 6. 增量分析策略
 
-| 变量 | 含义 | OpenClaw 默认 |
-|------|------|---------------|
-| `$SKILL_DIR` | Skill 根目录 | `~/.openclaw/workspace/skills/source-analyzer` |
-| `$OUTPUT_BASE` | 分析输出基目录 | `~/.openclaw/learning/projects` |
-| `$WORKSPACE` | 工作区根 | `~/.openclaw/workspace` |
-
-### 🧩 新增功能 2: LLM Agent 模板体系扩展
-
-#### 原有维度（11 个）
-
-1. 架构设计
-2. LLM 集成
-3. 记忆系统
-...
-
-#### 新增维度（8 个）
-
-| # | 维度 | 核心关切 |
-|---|------|----------|
-| 03 | 上下文工程 | Token 预算？延迟加载？压缩隔离？ |
-| 04 | 工具系统 | 工具声明？权限控制？安全边界？ |
-| 05 | 规划与推理 | 任务分解？规划算法？推理链？ |
-| 06 | 约束系统 | 约束分级？反理性化？遵循度保障？ |
-| 08 | 验证与自愈 | 输出验证？错误检测？自动修复？ |
-| 09 | 多代理协作 | Agent 间通信？协作模式？编排策略？ |
-| 10 | 可观测性 | 追踪模型？失败诊断？性能监控？ |
-| 11 | 评估框架 | 评估指标？测试方法？质量度量？ |
-
-#### 完整 LLM Agent 分析体系
-
-现支持 **19+ 维度**的完整分析：
-
-- **架构层**：架构设计、模块组织、依赖管理
-- **认知层**：LLM 集成、记忆系统、上下文工程、规划推理
-- **能力层**：工具系统、约束系统、验证自愈
-- **协作层**：多代理协作、人机协作
-- **运维层**：可观测性、性能优化、安全对齐
-- **质量层**：评估框架、测试方法
+| 变更规模 | 建议操作 |
+|----------|----------|
+| 无变更 | 无需分析 |
+| 微小变更 (< 5 文件) | 重分析变更文件 (Layer 3) |
+| 中等变更 (5-20 文件) | 重分析受影响模块 (Layer 1+3) |
+| 大范围变更 (> 20 文件) | 递归重分析受影响模块 + 跨模块总结 |
+| 架构级变更 | 重新执行完整分析（新版本号） |
 
 ### ✅ 验证测试
 
-- [x] runtime/adapter.md 三层架构设计完成
-- [x] runtime/environments/openclaw.md 适配文件创建
-- [x] runtime/environments/opencode.md 适配文件创建
-- [x] SKILL.md 环境适配章节新增
-- [x] 路径变量替换（$SKILL_DIR/$OUTPUT_BASE/$WORKSPACE）
-- [x] LLM Agent 模板扩展（8 个新维度）
-- [x] 脚本适配层集成（smart-analyze/goal-tracker/orchestrator 等）
-- [x] 行为指令标签语法定义
+- [x] `commit-tracker.py info ~/opensource/leveldb` 正确输出 commit 23e35d7
+- [x] `commit-tracker.py record` 正确写入 project-meta.json 和 commit-history.json
+- [x] `commit-tracker.py status` 无变化时退出码 0，正确提示
+- [x] `commit-tracker.py history` 正确列出分析历史
+- [x] `smart-analyze.py` Step 0 正确获取 commit 并写入 meta
+- [x] `goal-tracker.py register --commit-hash` 正确记录到 context
+- [x] `VERSION_TEMPLATE.md` 更新后包含 commit 占位符
+
+### 📊 脚本清单更新
+
+总计 **16 个脚本**（新增 1 个）
 
 ---
 

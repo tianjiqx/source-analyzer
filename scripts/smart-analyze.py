@@ -45,6 +45,9 @@ _gfl = _load_module('generate_file_list', 'generate-file-list.py')
 scan_project_files = _gfl.scan_project_files
 generate_file_list_markdown = _gfl.generate_file_list_markdown
 
+_ct = _load_module('commit_tracker', 'commit-tracker.py')
+get_commit_info = _ct.get_commit_info
+
 def run_analysis_plan(project_path, detection_result, multi_templates, files_info, output_dir, model_name=None):
     """生成分析执行计划（支持多类型）"""
     lines = []
@@ -203,6 +206,23 @@ def main():
     print(f"   输出目录: {output_dir}")
     print()
     
+    # Step 0: 获取 Git commit 信息
+    print("=" * 60)
+    print("Step 0: 获取 Git commit 信息")
+    print("=" * 60)
+    commit_info = get_commit_info(str(project_path))
+    if commit_info:
+        print(f"✅ Commit: {commit_info['commit_hash']}")
+        print(f"   Short:  {commit_info['commit_short']}")
+        print(f"   日期:   {commit_info['commit_date']}")
+        print(f"   消息:   {commit_info['commit_subject']}")
+        print(f"   分支:   {commit_info['branch']}")
+        if commit_info.get('tag'):
+            print(f"   Tag:    {commit_info['tag']}")
+    else:
+        print(f"⚠️  非 Git 仓库或无法获取 commit 信息（继续分析）")
+    print()
+    
     # Step 1: 检测项目类型
     print("=" * 60)
     print("Step 1: 检测项目类型")
@@ -288,6 +308,16 @@ def main():
         'files_count': len(files_info),
         'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'tool': 'source-analyzer',
+        # Git commit 信息（支持增量分析）
+        'commit_hash': commit_info.get('commit_hash', '') if commit_info else '',
+        'commit_short': commit_info.get('commit_short', '') if commit_info else '',
+        'commit_date': commit_info.get('commit_date', '') if commit_info else '',
+        'commit_subject': commit_info.get('commit_subject', '') if commit_info else '',
+        'branch': commit_info.get('branch', '') if commit_info else '',
+        'tag': commit_info.get('tag') if commit_info else None,
+        'remote_url': commit_info.get('remote_url', '') if commit_info else '',
+        'total_files_in_repo': commit_info.get('total_files', 0) if commit_info else 0,
+        'last_analyzed_at': datetime.now().isoformat(timespec='seconds'),
     }
     with open(meta_path, 'w', encoding='utf-8') as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
@@ -312,11 +342,15 @@ def main():
         print(f"   - 多类型合并: {len(multi_templates['overviews'])} 总览 + {len(multi_templates['templates'])} 专项 + {len(multi_templates['general'])} 通用")
     print(f"   - 关键文件: {len(files_info)} 个")
     print(f"   - 预计文档: {len(multi_templates['overviews']) + total_templates + len(files_info)} 个")
+    if commit_info:
+        print(f"   - Git Commit: {commit_info['commit_short']} ({commit_info['commit_date']})")
     print()
     print("💡 下一步:")
     print(f"   1. 查看分析计划: cat {analysis_plan_path}")
     print(f"   2. 按照计划逐步分析")
     print(f"   3. 使用对应的模板文档指导分析")
+    if commit_info:
+        print(f"   4. 增量分析: python3 $SKILL_DIR/scripts/commit-tracker.py status {project_path} --output-dir {output_dir}")
     print()
 
 if __name__ == '__main__':

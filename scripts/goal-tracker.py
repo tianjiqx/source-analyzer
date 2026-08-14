@@ -68,7 +68,11 @@ def register_goal(args):
         },
         "context": {
             "plan_file": args.plan_file if args.plan_file else None,
-            "session_key": None  # 可选，用于追踪会话
+            "session_key": None,  # 可选，用于追踪会话
+            "commit_hash": args.commit_hash if args.commit_hash else None,
+            "commit_short": args.commit_short if args.commit_short else None,
+            "commit_date": args.commit_date if args.commit_date else None,
+            "branch": args.branch if args.branch else None,
         }
     }
     
@@ -160,6 +164,11 @@ def list_goals(args):
         print(f"   创建: {goal['created']}")
         print(f"   更新: {progress['last_update']}")
         print(f"   输出: {goal['output_dir']}")
+        ctx = goal.get('context', {})
+        if ctx.get('commit_short'):
+            print(f"   Commit: {ctx['commit_short']} ({ctx.get('commit_date', '?')})")
+        if ctx.get('branch'):
+            print(f"   分支: {ctx['branch']}")
         print()
 
 
@@ -212,6 +221,10 @@ def main():
     register_parser.add_argument("--mode", required=True, choices=["layer1", "layer2", "layer3", "maximum", "recursive_deep"], help="分析模式")
     register_parser.add_argument("--total-tasks", type=int, help="总任务数")
     register_parser.add_argument("--plan-file", help="计划文件路径")
+    register_parser.add_argument("--commit-hash", help="项目当前 Git commit hash")
+    register_parser.add_argument("--commit-short", help="项目当前 Git commit 短 hash")
+    register_parser.add_argument("--commit-date", help="项目当前 Git commit 日期")
+    register_parser.add_argument("--branch", help="项目当前 Git 分支")
     
     # update
     update_parser = subparsers.add_parser("update", help="更新任务进度")

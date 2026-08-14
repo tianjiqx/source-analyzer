@@ -319,13 +319,23 @@ class OutputScanner:
         except Exception as e:
             return False, f"无法读取: {e}"
         
-        # 检查占位符
-        placeholders = ['TODO', 'TBD', '待补充', '占位符', 'placeholder', 'Coming soon']
-        # 只检查前 500 字符（正常文档不会开头就是占位符）
-        first_500 = content[:500].lower()
-        for ph in placeholders:
-            if ph.lower() in first_500:
-                return False, f"发现占位符: {ph}"
+        # 检查占位符（词边界正则，避免误报真实 API/宏名如 todo_start/end、REQUIRES_SERVICE_PLACEHOLDER_AS）
+        # 先剥离代码块（mermaid/代码），代码块内的 todo/placeholder 等是合法内容
+        content_no_code = re.sub(r'```.*?```', '', content, flags=re.DOTALL)
+        placeholder_patterns = [
+            r'\bTODO\b', r'\bTBD\b', r'待补充', r'占位符', r'\bplaceholder\b', r'Coming soon',
+            r'待评估', r'待完善', r'待完成', r'\bFIXME\b', r'\bXXX\b',
+        ]
+        # 只检查前 800 字符（正常文档不会开头就是占位符）
+        head = content_no_code[:800]
+        for pat in placeholder_patterns:
+            m = re.search(pat, head, re.IGNORECASE)
+            if m:
+                # 排除代码块内的匹配（如 todo_start/end 出现在代码/行内代码中）
+                pre = head[max(0, m.start()-40):m.end()+40]
+                if '`' in pre:
+                    continue
+                return False, f"发现占位符: {pat}"
         
         # 检查质量标记：至少有一个结构标记
         has_structure = any(marker in content for marker in self.QUALITY_MARKERS)
@@ -439,6 +449,9 @@ class OutputScanner:
             # 找文件
             file_path = None
             if norm in actual_files:
+                file_path = self.output_dir / norm
+            elif (self.output_dir / norm).exists():
+                # 直接检查路径存在（绕过 EXCLUDE_FILES 导致的假阴性）
                 file_path = self.output_dir / norm
             else:
                 # 模糊匹配
@@ -745,9 +758,35 @@ class ResilientRunner:
                 if task_slug.lower() in module_key.lower() or module_key.lower() in task_slug.lower():
                     report_status = report.get('status', '')
                     if report_status == 'completed':
-                        task.status = TaskStatus.COMPLETED
-                        task.actual_files = report.get('files_generated', [])
-                        updated_count += 1
+                        # 验证 report 声称的文件是否真实存在（防假完成）
+                        claimed = report.get('files_generated', []) or report.get('documents_generated', [])
+                        outdir = task.output_dir
+                        exists_count = 0
+                        if outdir:
+                            for f in claimed:
+                                base = os.path.basename(str(f))
+                                for root, dirs, files in os.walk(outdir):
+                                    if base in files:
+                                        exists_count += 1
+                                        break
+                        # 目录中实际 md 数
+                        md_count = 0
+                        if outdir and os.path.isdir(outdir):
+                            for root, dirs, files in os.walk(outdir):
+                                md_count += sum(1 for f in files if f.endswith('.md'))
+                        if claimed and exists_count >= max(1, int(len(claimed) * 0.6)):
+                            task.status = TaskStatus.COMPLETED
+                            task.actual_files = report.get('files_generated', [])
+                            updated_count += 1
+                        elif md_count >= 3:
+                            task.status = TaskStatus.COMPLETED
+                            task.actual_files = report.get('files_generated', [])
+                            updated_count += 1
+                        else:
+                            # 假完成：报告声称完成但文件缺失
+                            task.last_error = 'report claims completed but files missing (%d/%d, md=%d)' % (exists_count, len(claimed), md_count)
+                            task.status = TaskStatus.PARTIAL
+                            updated_count += 1
                     elif report_status == 'failed':
                         task.last_error = report.get('error', 'Subagent reported failure')
                         if task.status != TaskStatus.FAILED:
