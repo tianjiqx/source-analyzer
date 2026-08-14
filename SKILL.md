@@ -1,6 +1,6 @@
 ---
 name: source-analyzer
-description: 开源项目源码分析系统化工作流。支持三层渐进式分析（项目级→模块级→文件粒度）和递归深度分析模式（大型项目模块级递归）。专项模板（LLM Agent/Agent Skill/数据库/基础设施），自动生成 Mermaid 图表。环境无关设计，通过运行时适配层支持多平台。
+description: 系统化分析开源项目源码，生成架构图和模块依赖关系。适用于理解大型代码库结构、梳理模块关系、生成技术文档。
 metadata: {"openclaw":{"emoji":"🔬"}}
 ---
 
