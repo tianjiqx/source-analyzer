@@ -165,12 +165,18 @@ python3 scripts/verify-analysis.py <output-dir> --maximum
 
 ## 执行闭环
 
-分析完成后，必须完成以下闭环动作：
+分析完成后执行闭环动作，分两层（详见 [runtime/adapter.md](runtime/adapter.md) 能力矩阵）：
 
-1. **回写 MEMORY.md** - 将分析结果写入 `~/.openclaw/workspace/MEMORY.md`
-2. **更新对比数据库** - 编辑 `references/project-comparison-db.md`
+**A. 通用核心闭环（所有环境必做）**：
+1. **标记进度完成** - 机制由适配层提供（OpenClaw/opencode：`goal-tracker.py complete`；DSH：原生 goal 工具）
+2. **记录 Commit** - `python3 scripts/commit-tracker.py record <project> --output-dir <analysis-dir>`
 3. **创建版本记录** - 复制 `templates/VERSION_TEMPLATE.md` 到分析目录
-4. **验证完整性** - 运行 `python3 scripts/verify-analysis.py [analysis-dir] --all`
+4. **验证完整性** - 按模式选命令：递归模式 `--recursive`，标准模式 `--all`
+
+**B. 可选环境钩子（环境不支持则显式跳过并记录，禁止假闭环）**：
+- **回写 MEMORY.md**（`memory.write`，OpenClaw 默认 `~/.openclaw/workspace/MEMORY.md`；DSH 无记忆消费者→跳过）
+- **更新对比数据库**（`db.update`，仅当 `references/` 可写；只读环境→跳过）
+- 定时恢复 / 会话检查 / 完成通知（`scheduler` / `progress.check` / `notify.silent`）
 
 详见 [guides/EXECUTION_CLOSURE.md](guides/EXECUTION_CLOSURE.md)
 
