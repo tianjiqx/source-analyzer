@@ -37,7 +37,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `SKILL.md` | 执行闭环重构（A/B 两层）；Goal 持久化协议改为适配层机制；新增 DSH 机制说明 |
+| `SKILL.md` | 执行闭环重构（A/B 两层）；Goal 持久化协议改为适配层机制；执行纪律/弹性执行纪律标注 DSH 适配（原生 goal 替代 goal-tracker、跳过 resilient-runner/cron）；派发示例新增 DSH |
 | `runtime/adapter.md` | 行为接口新增 memory.write/db.update/progress.check；新增 DSH 环境实现与环境能力矩阵 |
 | `scripts/mermaid-validator.py` | sequenceDiagram 块闭合配对修复 |
 | `scripts/verify-analysis.py` | 递归计数/项目级回退/禁止词/INDEX 一致性四项修复 |
