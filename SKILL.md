@@ -804,7 +804,39 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 ---
 
-## 执行纪律
+## 💰 成本与确认纪律（长任务过程保障）
+
+### Token/成本预算账本
+
+- **PLAN 期估算**：模块数 × 平均文档数 × 单文档 token 经验值，写入 PLAN.md 头部（预算行）
+- **每批累记**：主 agent 每批 [WAIT] 后汇总各 .task-report-<module>.json 中的 token 估算字段，追加到 `.checkpoint.json` 的 `budget.spent`
+- **熔断**：`spent > 预算 × 150%` → 暂停，向用户请示（选项：降并发 / `--priority-only` 降级 / 继续放开预算）
+- 说明：token 计量为近似账本（子代理自报估算 + 按批汇总），非精确 API 用量
+
+### Goal 轮次预算（DSH）
+
+- 注册 goal 时按批次估算设足 `max_goal_rounds`（≈ 批次数 + 3 轮缓冲）
+- 触顶中断 → 用户一句"继续"（`update_goal action=resume`）续跑，此为恢复主路径
+
+### 三确认点（人仍在环上）
+
+| 确认点 | 时机 | 内容 |
+|--------|------|------|
+| ① 开工前 | PLAN.md 生成后 | 计划 + 预算估算 + 模块清单，用户确认才开批 |
+| ② 中途（异常触发） | 预算超 150% 或验收连续 2 批失败 | 降级/继续请示 |
+| ③ 收尾前 | Phase 3 综合结论出来后 | v1→v2 架构修正表 + 抽查结果，用户验收 |
+
+### 通知批汇聚
+
+- 每批只处理一次汇总通知（DSH：会话内汇报；装渠道插件可选 `de_channel_send` 推送批级摘要）
+- 禁止对 20 个子代理逐条响应/通知，避免打乱节奏
+
+### 输出目录 git 化（防污染）
+
+- 输出目录独立于被分析仓库：单独 `git init`，或放被分析仓库时加入其 .gitignore
+- 每批验收通过 commit 一次（可回溯可恢复）；.task-report-*/.glossary-* 等中间产物 ignore
+
+
 
 0. **📌 先注册 Goal** — 分析开始前注册任务，确保状态持久化
    （OpenClaw/CLI：`goal-tracker.py register`；**DSH：`create_goal`**）
