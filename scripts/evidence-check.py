@@ -48,14 +48,24 @@ def collect_refs(md: Path):
     return refs
 
 
-def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, claim_tokens=None):
+def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, claim_tokens=None, module_path: str = ""):
     """返回 (ok, reason)"""
-    f = project / rel
-    if not f.exists():
+    # 尝试多种路径：项目根相对 / 模块相对
+    candidates = [
+        project / rel,
+        project / module_path / rel if module_path else None,
+    ]
+    f = None
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            f = candidate
+            break
+    
+    if f is None:
         # 尝试宽松匹配：文件名在项目中唯一存在
         matches = list(project.rglob(Path(rel).name))
         if len(matches) != 1:
-            return False, f"文件不存在: {rel}"
+            return False, f"文件不存在: {rel}（尝试了项目根和模块路径）"
         f = matches[0]
     try:
         total = sum(1 for _ in f.open(encoding="utf-8", errors="replace"))
