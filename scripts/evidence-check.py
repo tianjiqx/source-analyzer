@@ -77,16 +77,22 @@ def try_auto_fix(project: Path, rel: str, l1: int, l2: int, module_path: str) ->
             if len(matches) == 1:
                 f = matches[0]
             elif len(matches) > 1 and module_path:
-                # 多个匹配，尝试从模块路径推断
+                # 多个匹配，尝试从模块路径推断；module_path 可能是简写（如
+                # "crates-redis"）不命中真实目录（"crates/ragfs-cache-redis"），此时
+                # candidates_for_fuzzy 回退到全部 matches 做后缀+关键段子串消歧。
+                candidates_for_fuzzy = matches
                 module_matches = [m for m in matches if module_path in str(m)]
                 if len(module_matches) == 1:
                     f = module_matches[0]
                 elif len(module_matches) > 1:
-                    # 尝试模糊匹配
+                    candidates_for_fuzzy = module_matches
+                if f is None and len(candidates_for_fuzzy) > 1:
+                    # 尝试匹配路径后缀 + 关键段子串（如 rel="redis/src/provider.rs"
+                    # → 真实 "crates/ragfs-cache-redis/src/provider.rs"）
                     rel_parts = Path(rel).parts
                     if len(rel_parts) > 1:
                         suffix_parts = rel_parts[1:]
-                        for m in module_matches:
+                        for m in candidates_for_fuzzy:
                             m_str = str(m)
                             if m_str.endswith("/".join(suffix_parts)):
                                 key_part = rel_parts[0]
@@ -112,7 +118,7 @@ def try_auto_fix(project: Path, rel: str, l1: int, l2: int, module_path: str) ->
                     f = partial_matches[0]
             except ValueError:
                 pass
-    
+
     if f is None:
         return None
     
@@ -173,36 +179,38 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
             if len(matches) == 1:
                 f = matches[0]
             elif len(matches) > 1:
-                # 多个匹配时，尝试从模块路径推断正确文件
+                # 多个匹配时，尝试从模块路径推断正确文件。
+                # 注意：module_path 可能是简写（如 "crates-redis"），真实目录是
+                # "crates/ragfs-cache-redis"（不含 "crates-redis" 子串），故按 module_path
+                # 过滤可能得到 0 个匹配——这时应回退到「后缀 + 关键段子串」的模糊消歧。
+                candidates_for_fuzzy = matches
                 if module_path:
-                    # 优先匹配模块路径下的文件
                     module_matches = [m for m in matches if module_path in str(m)]
                     if len(module_matches) == 1:
                         f = module_matches[0]
                     elif len(module_matches) > 1:
-                        # 仍然多个，尝试匹配路径后缀
-                        for m in module_matches:
-                            if str(m).endswith(rel):
+                        candidates_for_fuzzy = module_matches
+                    # module_matches 为空（简写不命中真实目录）→ 保持 candidates_for_fuzzy = matches
+                if f is None and len(candidates_for_fuzzy) > 1:
+                    # 尝试匹配路径后缀 + 关键段子串（子代理常用模块内相对路径，如
+                    # rel="redis/src/provider.rs"，真实为 "crates/ragfs-cache-redis/src/provider.rs"）
+                    rel_parts = Path(rel).parts
+                    if len(rel_parts) > 1:
+                        suffix_parts = rel_parts[1:]
+                        # 先精确后缀
+                        for m in candidates_for_fuzzy:
+                            if str(m).endswith(rel) or str(m).endswith("/".join(rel_parts)):
                                 f = m
                                 break
-                        # 如果还没有匹配，尝试从 rel 推断子路径
                         if f is None:
-                            # 例如：rel="python/src/lib.rs"，尝试匹配 "ragfs-python/src/lib.rs"
-                            # 策略：检查 rel 的关键部分（去掉第一级）是否出现在 m 中
-                            rel_parts = Path(rel).parts
-                            if len(rel_parts) > 1:
-                                # 去掉第一级（如 "python"），保留后面的部分（如 "src/lib.rs"）
-                                suffix_parts = rel_parts[1:]
-                                for m in module_matches:
-                                    m_str = str(m)
-                                    # 检查后缀是否匹配
-                                    if m_str.endswith("/".join(suffix_parts)):
-                                        # 进一步检查：rel 的第一级是否出现在 m 的倒数第 len(suffix_parts)+1 级
-                                        key_part = rel_parts[0]
-                                        m_key_part = m.parts[-(len(suffix_parts) + 1)] if len(m.parts) > len(suffix_parts) else ""
-                                        if key_part in m_key_part:  # 模糊匹配：python in ragfs-python
-                                            f = m
-                                            break
+                            for m in candidates_for_fuzzy:
+                                m_str = str(m)
+                                if m_str.endswith("/".join(suffix_parts)):
+                                    key_part = rel_parts[0]
+                                    m_key_part = m.parts[-(len(suffix_parts) + 1)] if len(m.parts) > len(suffix_parts) else ""
+                                    if key_part in m_key_part:  # 模糊匹配：redis in ragfs-cache-redis
+                                        f = m
+                                        break
                 if f is None:
                     # 无法确定，标记为"文件不唯一"但降低严重性
                     return False, f"文件不唯一: {rel}（找到 {len(matches)} 个匹配，建议子代理使用完整路径）"
