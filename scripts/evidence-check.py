@@ -37,6 +37,26 @@ FORBIDDEN_NOTE = "[未验证]"
 def find_md_files(analysis_dir: Path):
     return sorted(p for p in analysis_dir.rglob("*.md") if p.name != "EVIDENCE_REPORT.md")
 
+def extract_module_path(analysis_dir: Path, md_file: Path) -> str:
+    """从文档路径推断模块路径（用于多文件匹配时的路径推断）"""
+    # 例如：analysis_dir="openviking-analysis/10-module-deep/crates", md_file=".../crates/00-overview/README.md"
+    # 返回："crates"
+    try:
+        # 尝试从 analysis_dir 推断模块名
+        # 如果 analysis_dir 包含 "10-module-deep"，取其后的第一级目录
+        parts = analysis_dir.parts
+        if "10-module-deep" in parts:
+            idx = parts.index("10-module-deep")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        # 否则尝试从 md_file 推断
+        rel = md_file.relative_to(analysis_dir.parent if "10-module-deep" in analysis_dir.parts else analysis_dir)
+        if rel.parts and rel.parts[0] != "10-module-deep":
+            return rel.parts[0]
+    except (ValueError, IndexError):
+        pass
+    return ""
+
 
 def collect_refs(md: Path):
     text = md.read_text(encoding="utf-8", errors="replace")
@@ -71,7 +91,39 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
             if len(matches) == 1:
                 f = matches[0]
             elif len(matches) > 1:
-                return False, f"文件不唯一: {rel}（找到 {len(matches)} 个匹配）"
+                # 多个匹配时，尝试从模块路径推断正确文件
+                if module_path:
+                    # 优先匹配模块路径下的文件
+                    module_matches = [m for m in matches if module_path in str(m)]
+                    if len(module_matches) == 1:
+                        f = module_matches[0]
+                    elif len(module_matches) > 1:
+                        # 仍然多个，尝试匹配路径后缀
+                        for m in module_matches:
+                            if str(m).endswith(rel):
+                                f = m
+                                break
+                        # 如果还没有匹配，尝试从 rel 推断子路径
+                        if f is None:
+                            # 例如：rel="python/src/lib.rs"，尝试匹配 "ragfs-python/src/lib.rs"
+                            # 策略：检查 rel 的关键部分（去掉第一级）是否出现在 m 中
+                            rel_parts = Path(rel).parts
+                            if len(rel_parts) > 1:
+                                # 去掉第一级（如 "python"），保留后面的部分（如 "src/lib.rs"）
+                                suffix_parts = rel_parts[1:]
+                                for m in module_matches:
+                                    m_str = str(m)
+                                    # 检查后缀是否匹配
+                                    if m_str.endswith("/".join(suffix_parts)):
+                                        # 进一步检查：rel 的第一级是否出现在 m 的倒数第 len(suffix_parts)+1 级
+                                        key_part = rel_parts[0]
+                                        m_key_part = m.parts[-(len(suffix_parts) + 1)] if len(m.parts) > len(suffix_parts) else ""
+                                        if key_part in m_key_part:  # 模糊匹配：python in ragfs-python
+                                            f = m
+                                            break
+                if f is None:
+                    # 无法确定，标记为"文件不唯一"但降低严重性
+                    return False, f"文件不唯一: {rel}（找到 {len(matches)} 个匹配，建议子代理使用完整路径）"
             else:
                 return False, f"文件不存在: {rel}（尝试了项目根和模块路径）"
         except ValueError as e:
@@ -127,6 +179,11 @@ def main():
     results, total_refs, bad_refs, low_docs = [], 0, 0, []
     for md in sampled:
         text = md.read_text(encoding="utf-8", errors="replace")
+        module_path = extract_module_path(analysis_dir, md)
+        if args.json:
+            pass  # 静默模式
+        elif module_path:
+            print(f"📄 {md.relative_to(analysis_dir)} (module: {module_path})")
         refs = collect_refs(md)
         doc_bad = []
         for m in REF_RE.finditer(text):
@@ -136,7 +193,7 @@ def main():
             rel, l1 = m.group(1), int(m.group(2))
             l2 = int(m.group(3) or l1)
             tokens = extract_claim_tokens(text, m.span()) if args.content else None
-            ok, reason = check_ref(project, rel, l1, l2, args.content, tokens)
+            ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
             total_refs += 1
             if not ok:
                 bad_refs += 1
