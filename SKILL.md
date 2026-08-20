@@ -54,6 +54,7 @@ Skill 中使用路径变量，由适配层解析：
 | **专项分析模板** | LLM Agent（11维度）、Agent Skill（10维度）、数据库（10维度）、基础设施 |
 | **可视化输出** | 自动生成 Mermaid 图表（架构图/时序图/类图） |
 | **原则蒸馏** | 提炼可移植设计原则（Golden Rules）和陷阱（Gotchas） |
+| **🎓 费曼学习文档** | 从分析文档自动生成学习文档（讲解→自问自答→要点总结→常见误解），无需人工交互 |
 | **自动化脚本** | 项目检测、模块清单生成、递归编排、验证 |
 | **🔌 环境适配** | 环境无关设计，通过适配层支持多平台（OpenClaw / opencode / 纯 CLI） |
 | **🔄 弹性重试** | LLM rate limit / 并发失败自动重试（最多 5 次），定时自动恢复（如环境支持） |
@@ -287,8 +288,11 @@ output-dir/
 │       ├── overview.md
 │       ├── interface.md
 │       └── dependencies.md
-└── 20-file-level/                    # Layer 3: 文件粒度
-    └── <file>-analysis.md
+├── 20-file-level/                    # Layer 3: 文件粒度
+│   └── <file>-analysis.md
+└── 40-learning/                      # 🎓 费曼学习卡片（可选，用户要求时生成）
+    ├── INDEX.md                      # 学习卡片索引
+    └── LEARN_XX_<CONCEPT>.md         # 教学卡片（讲解/核心问题/要点总结/常见误解，全自动生成）
 ```
 
 ---
@@ -381,12 +385,18 @@ Phase 2: 模块级递归分析 (每个模块完整三层)
 ├── 生成模块独立报告
 └── 使用并行子任务派发
 
-Phase 3: 项目级总结
+Phase 3: 项目级总结（含架构再综合）
 ├── 整合所有模块分析
 ├── 生成跨模块对比
+├── 🏗️ 架构再综合：基于模块级证据重写项目架构文档
+│   ├── 对比 Phase 1 初版架构图，修正误判（依赖方向/分层假设）
+│   ├── 用真实调用链和依赖权重重绘架构图
+│   └── 更新 00-project-level/architecture.md（保留初版为 architecture-v1.md）
 ├── 提炼可移植模式
 └── 创建项目总结文档
 ```
+
+> **为什么架构分析放在递归之后更好**：Phase 1 的架构图只是"目录结构的翻译"（自顶向下浅层认知）；Phase 2 递归深入获得了模块内部调用链、隐含依赖、数据流等"自底向上"证据。经典方法论是"自顶向下概览 → 自底向上综合"——Phase 3 的架构再综合把两者对齐，能发现初版的误判（如以为是分层实际是管道式）。
 
 ### 输出结构
 
@@ -454,6 +464,8 @@ python3 $SKILL_DIR/scripts/recursive-orchestrator.py output-dir \
 [DISPATCH: task="项目级扫描，识别所有模块" label="project-scan"]
 
 # Phase 2: 模块级递归（分批并行，每批 max-parallel 个）
+# 每个 DISPATCH 任务需附：Glossary.md 路径（术语强制复用）+ 证据锚定要求（关键论断带 file:line）
+# 详见 guides/RECURSIVE_DEEP_ANALYSIS.md 的"并行术语一致性"与"证据锚定规范"
 # 批次 1
 for module in batch_1; do
   [DISPATCH: task="递归分析模块: $module" label="module-$module"]
@@ -696,6 +708,7 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) | 🔁 递归深度分析指南 |
 | [PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md) | 📋 计划驱动执行指南（检查点+验收）|
 | [RESILIENT_EXECUTION.md](guides/RESILIENT_EXECUTION.md) | 🔄 弹性执行指南（自动重试+定时恢复）|
+| [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md) | 🎓 费曼学习文档生成指南（从分析文档生成教学卡片）|
 
 ### 运行时适配 (runtime/)
 
@@ -761,6 +774,7 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 7. **📌 标记完成** — 分析完成后标记 goal 完成
    （OpenClaw/CLI：`goal-tracker.py complete`；**DSH：`update_goal action=complete`**）
 8. **🔗 记录 Commit** — 分析完成后运行 `commit-tracker.py record` 记录当前 commit，确保后续可增量分析
+9. **🎓 生成学习文档（可选）** — 如果用户要求，或分析模式为"最大化"或"递归深度"，自动从分析文档中提炼关键知识点，生成费曼学习文档。详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)
 
 ### 环境适配约定
 
@@ -991,6 +1005,14 @@ python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
 - **递归深度模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --recursive`
 - **标准 / 最大化模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all`
 
+### A4. 🎓 生成学习文档（可选，用户要求时执行）
+
+如果用户要求，或分析模式为"最大化"或"递归深度"，自动从分析文档中提炼关键知识点，生成费曼学习文档。
+
+详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)。
+
+产出位置：`output-dir/40-learning/`
+
 检查：
 - ✅ 文件完整性
 - ✅ INDEX.md 一致性（无幽灵引用；孤儿文件按"任意层级 INDEX 覆盖"判定，见脚本说明）
@@ -1039,4 +1061,4 @@ DSH 等无长期记忆消费者的环境**跳过**（恢复机制 = 原生 goal 
 
 ---
 
-*最后更新: 2026-08-04*
+*最后更新: 2026-08-05*
