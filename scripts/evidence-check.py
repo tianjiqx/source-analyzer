@@ -27,7 +27,10 @@ import re
 import sys
 from pathlib import Path
 
-REF_RE = re.compile(r"`([^`\n]+?\.(?:go|py|rs|java|ts|js|c|cc|cpp|h|hpp|go|rb|php|kt|swift|scala)):(\d+)(?:-(\d+))?(:\d+)?`?")
+# 匹配文件引用：支持反引号内外的格式
+# 格式1: `file.py:123` 或 `file.py:123-456`（标准）
+# 格式2: file.py:123 或 file.py:123-456（非标准，但实际存在）
+REF_RE = re.compile(r"`?([a-zA-Z0-9_/]+\.(?:go|py|rs|java|ts|js|c|cc|cpp|h|hpp|rb|php|kt|swift|scala)):(\d+)(?:-(\d+))?`?")
 FORBIDDEN_NOTE = "[未验证]"
 
 
@@ -63,10 +66,16 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
     
     if f is None:
         # 尝试宽松匹配：文件名在项目中唯一存在
-        matches = list(project.rglob(Path(rel).name))
-        if len(matches) != 1:
-            return False, f"文件不存在: {rel}（尝试了项目根和模块路径）"
-        f = matches[0]
+        try:
+            matches = list(project.rglob(Path(rel).name))
+            if len(matches) == 1:
+                f = matches[0]
+            elif len(matches) > 1:
+                return False, f"文件不唯一: {rel}（找到 {len(matches)} 个匹配）"
+            else:
+                return False, f"文件不存在: {rel}（尝试了项目根和模块路径）"
+        except ValueError as e:
+            return False, f"路径模式错误: {rel}（{e}）"
     try:
         total = sum(1 for _ in f.open(encoding="utf-8", errors="replace"))
     except OSError as e:
