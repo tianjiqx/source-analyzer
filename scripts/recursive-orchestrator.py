@@ -123,6 +123,11 @@ def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_pat
 
 每个文档至少包含 1 个 Mermaid 图表。
 
+=== 必备蒸馏章节（每个分析文档末尾必须有）===
+1. `## 💡 设计洞察`：至少 2 条可移植原则，每条含【原理】【证据(file:line)】【去名检验】
+2. `## ⚠️ 隐含陷阱`：至少 2 条非显而易见陷阱，每条含【现象】【原因】【正确做法】
+这是质量验证的强制项，缺失会扣分。格式见 guides/FILE_LEVEL_ANALYSIS.md 第十二节。
+
 === 完成报告 ===
 分析完成后，在输出目录生成 .task-report.json:
 {{

@@ -251,6 +251,28 @@ def get_file_priority(filepath, filename, project_type='general'):
             priority += 5
             break
     
+    # 🔽 测试文件惩罚：测试文件不应排在核心源码前面
+    test_indicators = ['_test.', '_test_', 'test_', 'test.', 'tests/', '/test/', 
+                       '_spec.', 'spec/', '.test.', '.spec.', '_testing.']
+    for indicator in test_indicators:
+        if indicator in rel_path:
+            priority -= 15
+            break
+    
+    # 🔽 基准测试/benchmark 文件惩罚（优先级低于核心源码）
+    bench_indicators = ['benchmark', 'bench/', 'perf_test', 'load_test']
+    for indicator in bench_indicators:
+        if indicator in rel_path:
+            priority -= 10
+            break
+    
+    # 🔽 示例/文档文件惩罚
+    example_indicators = ['example', 'sample', 'demo', 'tutorial']
+    for indicator in example_indicators:
+        if indicator in rel_path:
+            priority -= 8
+            break
+    
     return priority
 
 def get_git_modification_count(project_path, filepath):

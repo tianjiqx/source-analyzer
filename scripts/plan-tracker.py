@@ -48,12 +48,14 @@ def save_json(path: Path, data: dict):
 def parse_plan_tasks(plan_path: Path) -> List[dict]:
     """从 PLAN.md 中解析任务清单
     
-    查找 [status: pending] 标记的任务，提取任务名和预期输出
+    支持两种格式：
+    1. `### Task N: name [status: xxx]` (recursive-orchestrator 格式)
+    2. `- [ ] 任务描述` (smart-analyze 复选框格式)
     """
     content = plan_path.read_text(encoding='utf-8')
     tasks = []
     
-    # 匹配 ### Task N: name [status: xxx]
+    # 格式 1: 匹配 ### Task N: name [status: xxx]
     task_pattern = re.compile(
         r'###\s+Task\s+(\d+):\s+(.+?)\s+\[status:\s*(\w+)\]',
         re.IGNORECASE
@@ -86,6 +88,28 @@ def parse_plan_tasks(plan_path: Path) -> List[dict]:
             'status': status,
             'expected_files': expected_files,
         })
+    
+    # 格式 2: 如果格式 1 没匹配到，尝试复选框格式
+    if not tasks:
+        checkbox_pattern = re.compile(r'^-\s+\[\s*\]\s+(.+)$', re.MULTILINE)
+        task_id = 1
+        for match in checkbox_pattern.finditer(content):
+            task_desc = match.group(1).strip()
+            # 提取预期文件（从描述中提取 .md 路径）
+            expected_files = []
+            file_match = re.search(r'`([^`]+\.md)`', task_desc)
+            if file_match:
+                expected_files.append(file_match.group(1))
+            
+            # 跳过纯阅读/分析步骤（没有明确输出文件的）
+            if expected_files or '生成' in task_desc or '输出' in task_desc:
+                tasks.append({
+                    'task_id': task_id,
+                    'name': task_desc[:60],  # 截断过长的描述
+                    'status': 'pending',
+                    'expected_files': expected_files,
+                })
+                task_id += 1
     
     return tasks
 

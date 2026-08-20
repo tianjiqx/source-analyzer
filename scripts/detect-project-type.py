@@ -27,33 +27,36 @@ PROJECT_TYPE_SIGNATURES = {
         'name': 'LLM Agent',
         'keywords': [
             # 高特异性关键词（LLM Agent 独有）
-            'llm agent', 'ai agent', 'autonomous agent', 'multi-agent',
-            'openai api', 'anthropic api', 'claude api', 'gpt-4', 'gpt-3.5',
+            'agent loop', 'agent cycle', 'agentic', 'autonomous agent', 'ai agent',
+            'llm agent', 'multi-agent system', 'agent orchestration', 'agent framework',
+            'openai api', 'anthropic api', 'claude api', 'gpt-4', 'gpt-3.5', 'gemini api',
             'chatcompletion', 'chat completion', 'function calling', 'tool calling',
-            'langchain', 'llamaindex', 'autogen', 'crewai', 'mem0', 'memgpt',
-            'vector store', 'embedding model', 'retriever', 'rag pipeline',
-            'prompt template', 'prompt engineering', 'chain of thought', 'cot',
-            'agent memory', 'conversation memory', 'long-term memory',
-            'tool use', 'function call', 'action space', 'observation',
+            'langchain', 'llamaindex', 'autogen', 'crewai', 'mem0', 'memgpt', 'langgraph',
+            'vector store', 'embedding model', 'retriever', 'rag pipeline', 'rag system',
+            'prompt template', 'prompt engineering', 'chain of thought', 'cot', 'few-shot',
+            'agent memory', 'conversation memory', 'long-term memory', 'episodic memory',
+            'tool use', 'function call', 'action space', 'observation', 'reward signal',
+            'context window', 'token budget', 'token limit', 'max tokens',
+            'system prompt', 'user message', 'assistant message', 'tool result',
+            'conversation history', 'chat history', 'message history', 'session memory',
             # 中特异性关键词（需要组合判断）
-            'openai', 'anthropic', 'claude', 'gemini', 'llama',
-            'tokenizer', 'token count', 'context window', 'max tokens',
-            'temperature', 'top_p', 'top_k', 'frequency penalty',
-            'system prompt', 'user message', 'assistant message',
-            'conversation history', 'chat history', 'message history',
+            'openai', 'anthropic', 'claude', 'gemini', 'llama', 'gpt',
+            'tokenizer', 'temperature', 'top_p', 'frequency penalty',
+            'streaming response', 'structured output', 'json mode',
         ],
         'file_patterns': [
             'agent', 'llm', 'chat', 'prompt', 'tool', 'embedding',
             'retriever', 'chain', 'completion', 'openai_client', 'anthropic_client',
+            'memory', 'context', 'reasoning', 'planning',
         ],
         'dir_patterns': [
             'agents', 'tools', 'prompts', 'memory', 'llm', 'chains',
-            'retrievers', 'embeddings', 'vector_stores', 'chat',
+            'retrievers', 'embeddings', 'vector_stores', 'chat', 'context',
         ],
         'config_patterns': [
             'openai', 'anthropic', 'llm_config', 'model_config', 'api_key'
         ],
-        'weight': 1.2,  # 提高权重
+        'weight': 1.4,  # 提高权重，因为高特异性关键词更可靠
     },
     'database': {
         'name': '数据库/大数据系统',
@@ -85,23 +88,30 @@ PROJECT_TYPE_SIGNATURES = {
     'fullstack-web': {
         'name': '全栈 Web 应用',
         'keywords': [
-            'next', 'nuxt', 'remix', 'svelte', 'react', 'vue', 'angular',
-            'api', 'route', 'component', 'page', 'layout', 'middleware',
-            'websocket', 'sse', 'server', 'client', 'frontend', 'backend'
+            # 高特异性关键词（Web 框架）
+            'next.js', 'nextjs', 'nuxt.js', 'nuxtjs', 'remix', 'sveltekit', 'svelte',
+            'react.js', 'reactjs', 'vue.js', 'vuejs', 'angular.js', 'angularjs',
+            'express.js', 'fastify', 'koa.js', 'hapi.js', 'nest.js', 'nestjs',
+            'django', 'flask', 'fastapi', 'rails', 'laravel', 'spring boot',
+            # 中特异性关键词（Web 概念，需要组合判断）
+            'jsx', 'tsx', 'vite', 'webpack', 'babel', 'esbuild',
+            'tailwindcss', 'bootstrap', 'material-ui', 'antd', 'chakra-ui',
+            'prisma', 'sequelize', 'mongoose', 'typeorm', 'knex',
+            'websocket', 'sse', 'server-sent events', 'graphql', 'rest api',
         ],
         'file_patterns': [
             'page.tsx', 'page.jsx', 'layout.tsx', 'route.ts', 'api.ts',
-            'component', 'middleware', 'server', 'client'
+            'next.config', 'nuxt.config', 'vite.config', 'webpack.config',
         ],
         'dir_patterns': [
-            'app', 'pages', 'components', 'api', 'routes', 'layouts',
-            'middleware', 'public', 'assets', 'styles'
+            'app', 'pages', 'components', 'routes', 'layouts',
+            'public', 'assets', 'styles', 'static',
         ],
         'config_patterns': [
             'next.config', 'nuxt.config', 'vite.config', 'webpack.config',
             'tailwind.config', 'postcss.config'
         ],
-        'weight': 0.8
+        'weight': 0.6  # 降低权重，因为泛化关键词容易误匹配
     },
     'agent-skill': {
         'name': 'Agent Skill',
@@ -164,15 +174,15 @@ TEMPLATE_RECOMMENDATIONS = {
         'templates': [
             'templates/llm-agent/LLM_AGENT_01_ARCHITECTURE.md',
             'templates/llm-agent/LLM_AGENT_02_LLM_INTEGRATION.md',
-            'templates/llm-agent/LLM_AGENT_03_MEMORY_SYSTEM.md',
-            'templates/llm-agent/LLM_AGENT_04_TOOL_SYSTEM.md',
-            'templates/llm-agent/LLM_AGENT_05_PLANNING_REASONING.md',
-            'templates/llm-agent/LLM_AGENT_06_HUMAN_COLLABORATION.md',
-            'templates/llm-agent/LLM_AGENT_07_SAFETY_ALIGNMENT.md',
-            'templates/llm-agent/LLM_AGENT_08_OBSERVABILITY.md',
-            'templates/llm-agent/LLM_AGENT_09_PERFORMANCE.md',
-            'templates/llm-agent/LLM_AGENT_10_EVALUATION.md',
-            'templates/llm-agent/LLM_AGENT_11_AGENT_FRAMEWORK.md',
+            'templates/llm-agent/LLM_AGENT_03_CONTEXT_ENGINEERING.md',
+            'templates/llm-agent/LLM_AGENT_04_MEMORY_SYSTEM.md',
+            'templates/llm-agent/LLM_AGENT_05_TOOL_SYSTEM.md',
+            'templates/llm-agent/LLM_AGENT_06_CONSTRAINT_SYSTEM.md',
+            'templates/llm-agent/LLM_AGENT_07_PLANNING_REASONING.md',
+            'templates/llm-agent/LLM_AGENT_08_VERIFICATION_SELF_HEALING.md',
+            'templates/llm-agent/LLM_AGENT_09_MULTI_AGENT.md',
+            'templates/llm-agent/LLM_AGENT_10_OBSERVABILITY.md',
+            'templates/llm-agent/LLM_AGENT_11_EVALUATION_FRAMEWORK.md',
         ],
         'general': [
             'templates/general/FULLSTACK_WEB_ANALYSIS.md',
@@ -441,11 +451,14 @@ def recommend_templates_multi(detection_result):
                 merged_general.append(t)
                 seen_general.add(t)
     
+    # 跨类别去重：如果模板同时出现在 specialized 和 general 中，只保留 specialized 版本
+    final_general = [t for t in merged_general if t not in seen_templates]
+    
     return {
         'types': active_types,
         'overviews': merged_overviews,
         'templates': merged_templates,
-        'general': merged_general,
+        'general': final_general,
     }
 
 def generate_report(project_path, detection_result, recommend_templates_flag):

@@ -144,7 +144,7 @@ def run_analysis_plan(project_path, detection_result, multi_templates, files_inf
             template_name = Path(template).stem
             lines.append(f"### 3.{i} {template_name}\n\n")
             lines.append(f"- [ ] 阅读 `{template}`\n")
-            lines.append(f"- [ ] 生成 `{project_path.name}/{template_name}.md`\n\n")
+            lines.append(f"- [ ] 生成 `00-project-level/{template_name}.md`\n\n")
     
     # Phase 4: 文件级分析
     lines.append("## Phase 4: 文件级分析\n\n")
@@ -179,6 +179,61 @@ def run_analysis_plan(project_path, detection_result, multi_templates, files_inf
         lines.append(f"*分析模型: `{model_name}`*\n")
     
     return ''.join(lines)
+
+def generate_index_skeleton(project_name, project_path, project_type, language,
+                             commit_info, multi_templates, files_info, model_name):
+    """生成 INDEX.md 骨架（预填充项目信息和文档导航结构）"""
+    lines = []
+    commit_short = commit_info.get('commit_short', 'unknown') if commit_info else 'unknown'
+    commit_date = commit_info.get('commit_date', '') if commit_info else ''
+    
+    lines.append(f"# {project_name} 源码分析索引\n\n")
+    lines.append(f"> **项目**: {project_name}\n")
+    lines.append(f"> **分析 commit**: `{commit_short}` ({commit_date})\n")
+    lines.append(f"> **项目类型**: {project_type}\n")
+    lines.append(f"> **分析模型**: {model_name}\n\n")
+    lines.append("---\n\n")
+    
+    # 项目概览表
+    lines.append("## 📊 项目概览\n\n")
+    lines.append("| 指标 | 值 |\n")
+    lines.append("|------|-----|\n")
+    lines.append(f"| 语言 | {language} |\n")
+    lines.append(f"| 关键文件 | {len(files_info)} 个 |\n")
+    lines.append(f"| 推荐模板 | {len(multi_templates['templates']) + len(multi_templates['general'])} 个 |\n\n")
+    lines.append("---\n\n")
+    
+    # Layer 1 导航
+    lines.append("## 📁 分析文档导航\n\n")
+    lines.append("### Layer 1: 项目级分析\n\n")
+    lines.append("| 文档 | 说明 |\n")
+    lines.append("|------|------|\n")
+    lines.append(f"| [README.md](00-project-level/README.md) | 项目概览、核心功能、快速开始 |\n")
+    lines.append(f"| [architecture.md](00-project-level/architecture.md) | 架构设计、数据流、分层约束 |\n")
+    lines.append(f"| [dependencies.md](00-project-level/dependencies.md) | 依赖分析、优秀库推荐 |\n")
+    lines.append(f"| [core-code.md](00-project-level/core-code.md) | 核心代码深度分析 |\n")
+    lines.append(f"| [quality-score.md](00-project-level/quality-score.md) | 质量评分、改进建议 |\n")
+    lines.append(f"| [learning-value.md](00-project-level/learning-value.md) | 学习价值、设计模式借鉴 |\n\n")
+    
+    # Layer 2 导航（占位）
+    lines.append("### Layer 2: 模块级分析\n\n")
+    lines.append("> ⏳ 模块级分析待生成。执行 `recursive-orchestrator.py` 后自动填充。\n\n")
+    lines.append("---\n\n")
+    
+    # 关键发现（占位）
+    lines.append("## 🔑 关键发现\n\n")
+    lines.append("> ⏳ 分析完成后填充。\n\n")
+    
+    # 统计（占位）
+    lines.append("## 📈 分析统计\n\n")
+    lines.append("- **生成文档数**: 待统计\n")
+    lines.append("- **Mermaid 图**: 待统计\n")
+    lines.append("- **代码引用**: 待统计\n\n")
+    lines.append("---\n\n")
+    lines.append(f"*生成时间: {datetime.now().strftime('%Y-%m-%d')}*\n")
+    
+    return ''.join(lines)
+
 
 def main():
     parser = argparse.ArgumentParser(description='智能源码分析 - 自动检测项目类型并生成分析计划')
@@ -322,6 +377,20 @@ def main():
     with open(meta_path, 'w', encoding='utf-8') as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
     print(f"✅ 项目元数据: {meta_path}")
+    print()
+    
+    # Step 7: 生成 INDEX.md 骨架
+    print("=" * 60)
+    print("Step 7: 生成 INDEX.md 骨架")
+    print("=" * 60)
+    index_path = output_dir / 'INDEX.md'
+    index_md = generate_index_skeleton(
+        project_name, project_path, primary_name, language,
+        commit_info, multi_templates, files_info, model_name
+    )
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write(index_md)
+    print(f"✅ INDEX 骨架: {index_path}")
     print()
     
     # 输出总结

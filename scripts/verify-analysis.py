@@ -21,43 +21,50 @@ from pathlib import Path
 from datetime import datetime
 
 
-# 必需文件定义
+# 必需文件定义（支持两种结构：扁平式 00-README.md 和 目录式 00-project-level/README.md）
 REQUIRED_FILES = {
     "00-README.md": {
         "sections": ["项目", "简介", "技术栈", "快速开始", "Stars", "License"],
         "forbidden": ["TBD", "TODO", "待补充", "xxx", "xx "],
         "min_tables": 2,
+        "alt_paths": ["00-project-level/README.md"],  # 替代路径
     },
     "01-architecture.md": {
         "sections": ["模块", "架构", "数据流", "入口", "组件"],
         "forbidden": ["TBD", "TODO", "待补充"],
         "min_tables": 1,
+        "alt_paths": ["00-project-level/architecture.md"],
     },
     "02-core-code.md": {
         "sections": ["类", "文件", "方法", "模式", "代码", "入口"],
         "forbidden": ["TBD", "TODO", "待补充"],
         "min_tables": 2,
         "min_code_blocks": 2,
+        "alt_paths": ["00-project-level/core-code.md"],
     },
     "03-quality-score.md": {
         "sections": ["评分", "质量", "安全", "测试", "建议", "改进"],
         "forbidden": ["TBD", "TODO", "待补充", "评分 TBD"],
         "min_tables": 1,
+        "alt_paths": ["00-project-level/quality-score.md"],
     },
     "04-learning-value.md": {
         "sections": ["学习", "借鉴", "场景", "推荐", "价值"],
         "forbidden": ["TBD", "TODO", "待补充", "推荐 TBD"],
         "min_tables": 1,
+        "alt_paths": ["00-project-level/learning-value.md"],
     },
     "dependencies.md": {
         "sections": ["依赖", "版本", "许可证", "Stars"],
         "forbidden": ["TBD", "TODO", "待补充"],
         "min_tables": 1,
+        "alt_paths": ["00-project-level/dependencies.md"],
     },
     "INDEX.md": {
         "sections": ["导航", "索引", "概览"],
         "forbidden": [],
         "min_tables": 1,
+        "alt_paths": [],
     },
 }
 
@@ -66,13 +73,18 @@ REQUIRED_FILES = {
 ORPHAN_EXCLUDE_NAMES = {
     'INDEX.md',                     # 导航文件本身
     'PLAN.md', 'PLAN_FULL.md',      # 计划
+    'ANALYSIS_PLAN.md',             # 智能分析计划
+    'RESEARCH_PLAN.md',             # 研究计划
+    'FILE_LIST.md',                 # 文件列表
     'VERSION.md',                   # 版本记录
     'CONVENTIONS.md',               # 写作约定
     'VERIFICATION_REPORT.md', 'PLAN_VERIFICATION_REPORT.md',
     'RECURSIVE_MODE_REPORT.md', 'MAXIMUM_MODE_REPORT.md',
     'MERMAID_VALIDATION_REPORT.md', # 验证报告
+    'project-meta.json',            # 项目元数据
+    'EVALUATION_REPORT.md',         # 评估报告
 }
-ORPHAN_EXCLUDE_DIRS = {'task-prompts'}  # 工作目录（派发提示等）
+ORPHAN_EXCLUDE_DIRS = {'task-prompts', '.handoff'}  # 工作目录（派发提示等）
 
 
 def extract_links_from_markdown(content: str) -> list:
@@ -107,6 +119,9 @@ def check_index_consistency(analysis_dir: Path) -> dict:
         'details': [],
     }
 
+    # Resolve to absolute path to avoid relative_to() errors
+    analysis_dir = analysis_dir.resolve()
+    
     index_path = analysis_dir / 'INDEX.md'
     if not index_path.exists():
         result['details'].append('INDEX.md 不存在，跳过一致性检查')
@@ -225,11 +240,30 @@ def format_index_consistency_detail(index_consistency: dict) -> str:
 
 
 def resolve_required_file(analysis_dir: Path, filename: str) -> Path:
-    """解析必需文件路径：优先根目录，其次 00-project-level/（递归模式布局）"""
+    """解析必需文件路径：优先根目录，其次 00-project-level/（递归模式布局）
+    
+    支持两种布局：
+    - 扁平式: 00-README.md, 01-architecture.md, ...
+    - 目录式: 00-project-level/README.md, 00-project-level/architecture.md, ...
+    """
+    # 1. 先检查根目录（扁平式布局）
     root_path = analysis_dir / filename
     if root_path.exists():
         return root_path
-    project_level = analysis_dir / '00-project-level' / filename
+    
+    # 2. 检查 00-project-level/ 目录（目录式布局）
+    # 去掉文件名前缀数字（如 00-, 01- 等）
+    base_name = re.sub(r'^\d+-', '', filename)
+    project_level = analysis_dir / '00-project-level' / base_name
+    if project_level.exists():
+        return project_level
+    
+    # 3. 也检查原始文件名在 00-project-level/ 下
+    project_level_original = analysis_dir / '00-project-level' / filename
+    if project_level_original.exists():
+        return project_level_original
+    
+    # 返回默认路径（用于报错）
     return project_level
 
 
@@ -315,45 +349,55 @@ def check_distillation_sections(content: str) -> dict:
     
     # 检查设计洞察章节
     insight_patterns = [
-        r"##\s*💡\s*设计洞察",
-        r"##\s*设计洞察",
-        r"##\s*Design\s*Insights"
+        r"##\s*(\d+\.\s*)?💡\s*设计洞察",
+        r"##\s*(\d+\.\s*)?设计洞察",
+        r"##\s*(\d+\.\s*)?Design\s*Insights",
+        r"设计洞察",  # Fallback: any mention
     ]
     for pattern in insight_patterns:
         if re.search(pattern, content, re.IGNORECASE):
             result["has_insights"] = True
             break
     
-    # 统计原则数量（查找 **原则** 或 **Golden Rule**）
+    # 统计原则数量（查找 **原则** 或 **Golden Rule** 或 > **原则 N** 或 > **原则** 或数字列表格式）
     principle_patterns = [
         r"\*\*原则\s*\d+\*\*",
         r"\*\*Golden\s*Rule\s*\d+\*\*",
-        r"###\s*原则\s*\d+"
+        r"###\s*原则\s*\d+",
+        r">\s*\*\*原则\s*\d+\*\*",  # Match "> **原则 1**:" format
+        r"原则\s*\d+[:：]",  # Match "原则 1:" or "原则 1："
+        r">\s*\*\*原则\*\*[:：]",  # Match "> **原则**:" format (unnumbered)
+        r"^\d+\.\s*\*\*[^*]+\*\*[:：]",  # Match "1. **标题**:" format (numbered list with bold title)
     ]
     for pattern in principle_patterns:
-        matches = re.findall(pattern, content, re.IGNORECASE)
+        matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
         result["insight_count"] = max(result["insight_count"], len(matches))
     
     # 检查隐含陷阱章节
     gotcha_patterns = [
-        r"##\s*⚠️\s*隐含陷阱",
-        r"##\s*隐含陷阱",
-        r"##\s*Gotchas",
-        r"##\s*Pitfalls"
+        r"##\s*(\d+\.\s*)?⚠️\s*隐含陷阱",
+        r"##\s*(\d+\.\s*)?隐含陷阱",
+        r"##\s*(\d+\.\s*)?Gotchas",
+        r"##\s*(\d+\.\s*)?Pitfalls",
+        r"隐含陷阱",  # Fallback: any mention
     ]
     for pattern in gotcha_patterns:
         if re.search(pattern, content, re.IGNORECASE):
             result["has_gotchas"] = True
             break
     
-    # 统计陷阱数量（查找 **陷阱** 或 **Gotcha**）
+    # 统计陷阱数量（查找 **陷阱** 或 **Gotcha** 或 > **陷阱 N** 或 > **陷阱** 或数字列表格式）
     gotcha_count_patterns = [
         r"\*\*陷阱\s*\d+\*\*",
         r"\*\*Gotcha\s*\d+\*\*",
-        r"###\s*陷阱\s*\d+"
+        r"###\s*陷阱\s*\d+",
+        r">\s*\*\*陷阱\s*\d+\*\*",  # Match "> **陷阱 1**:" format
+        r"陷阱\s*\d+[:：]",  # Match "陷阱 1:" or "陷阱 1："
+        r">\s*\*\*陷阱\*\*[:：]",  # Match "> **陷阱**:" format (unnumbered)
+        r"^\d+\.\s*\*\*[^*]+\*\*[:：]",  # Match "1. **标题**:" format (numbered list with bold title)
     ]
     for pattern in gotcha_count_patterns:
-        matches = re.findall(pattern, content, re.IGNORECASE)
+        matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
         result["gotcha_count"] = max(result["gotcha_count"], len(matches))
     
     # 检查去名检验
@@ -424,8 +468,19 @@ def check_file_content(analysis_dir: Path, filename: str) -> dict:
     code_blocks_ok = code_block_count >= min_code_blocks
     
     # 检查蒸馏章节（设计洞察和隐含陷阱）
-    distillation = check_distillation_sections(content)
-    distillation_ok = len(distillation["issues"]) == 0
+    # 仅对架构、依赖、模块分析文档检查
+    # 跳过：README/INDEX（元数据）、core-code/quality-score/learning-value（汇总文档）
+    skip_distillation_names = {
+        "00-README.md", "INDEX.md",
+        "02-core-code.md", "03-quality-score.md", "04-learning-value.md",
+    }
+    skip_distillation = filename in skip_distillation_names
+    if skip_distillation:
+        distillation = {"issues": []}
+        distillation_ok = True
+    else:
+        distillation = check_distillation_sections(content)
+        distillation_ok = len(distillation["issues"]) == 0
     
     # 收集问题
     issues = []

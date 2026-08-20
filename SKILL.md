@@ -606,6 +606,8 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 
 详见 [guides/FILE_LEVEL_ANALYSIS.md](guides/FILE_LEVEL_ANALYSIS.md)
 
+> **🏆 必备蒸馏章节**: 每个文件级/模块级分析文档**必须**在末尾包含 `## 💡 设计洞察`（≥2 条，含 原理/证据/去名检验）与 `## ⚠️ 隐含陷阱`（≥2 条，含 现象/原因/正确做法）两个章节。这是 source-analyzer 区别于纯代码浏览的核心价值，也是 verify-analysis / review-agent 的检查项。详细格式见 [guides/FILE_LEVEL_ANALYSIS.md](guides/FILE_LEVEL_ANALYSIS.md) 第十二节。
+
 ---
 
 ## 专项分析模板

@@ -86,21 +86,53 @@ def pre_research_scan(project_path):
     # 3. 入口点识别
     print("  [Step 0.3] 入口点识别...")
     entry_files = []
+    # 扩展入口模式：支持多语言
+    EXTRA_ENTRY_PATTERNS = [
+        '__main__', 'main', 'cli', 'manage', 'setup', 'wsgi', 'asgi',
+        'index', 'server', 'bootstrap', 'entry', 'launcher', '__init__',
+    ]
+    all_patterns = ENTRY_PATTERNS + EXTRA_ENTRY_PATTERNS
     for root, dirs, files in os.walk(project_path):
-        dirs[:] = [d for d in dirs if d not in ['.git', 'target', 'build', 'node_modules']]
+        dirs[:] = [d for d in dirs if d not in ['.git', 'target', 'build', 'node_modules', 'vendor', '__pycache__']]
         for file in files:
-            for pattern in ENTRY_PATTERNS:
-                if pattern in file:
+            fname_no_ext = os.path.splitext(file)[0]
+            for pattern in all_patterns:
+                if pattern.lower() == fname_no_ext.lower() or pattern.lower() in file.lower():
                     entry_files.append(os.path.relpath(os.path.join(root, file), project_path))
                     break
+    
+    # 检测项目级入口配置（pyproject.toml / setup.py / package.json）
+    project_root_files = []
+    for f in ['pyproject.toml', 'setup.py', 'setup.cfg', 'package.json', 'Cargo.toml', 'go.mod']:
+        if os.path.exists(os.path.join(project_path, f)):
+            project_root_files.append(f)
+    results['project_config_files'] = project_root_files
+    
+    # 只保留顶层入口文件 + 包级 __init__.py（最多 10 个）
+    # 优先显示顶层入口，然后是包级 __init__.py
+    top_entries = [f for f in entry_files if os.sep not in f]
+    pkg_inits = [f for f in entry_files if f.endswith('__init__.py') and f.count(os.sep) == 1]
+    other_entries = [f for f in entry_files if f not in top_entries and f not in pkg_inits]
+    entry_files = top_entries + pkg_inits + other_entries
     
     results['entry_files'] = entry_files[:10]  # 最多 10 个
     
     # 4. Git 历史扫描
     print("  [Step 0.4] Git 历史扫描...")
     try:
+        # 先检测是否为浅克隆（depth=1 时 git log 只有 1 条 commit）
+        rev_count = subprocess.run(
+            ['git', 'rev-list', '--count', 'HEAD'],
+            cwd=project_path, capture_output=True, text=True, timeout=10
+        )
+        total_commits = int(rev_count.stdout.strip()) if rev_count.returncode == 0 else 0
+        results['total_commits'] = total_commits
+        results['is_shallow'] = total_commits < 5
+        
+        # 使用 --format="" 只输出文件名，避免 commit 消息混入
+        log_range = '--all' if total_commits < 5 else '-100'
         result = subprocess.run(
-            ['git', 'log', '--oneline', '--name-only', '-100'],
+            ['git', 'log', '--format=', '--name-only', log_range],
             cwd=project_path,
             capture_output=True,
             text=True,
@@ -109,13 +141,13 @@ def pre_research_scan(project_path):
         
         if result.returncode == 0:
             lines = result.stdout.strip().split('\n')
-            # 统计文件修改频率
+            # 只统计非空行（--format= 确保不会有 commit 消息）
             file_counter = Counter(f for f in lines if f and not f.startswith('['))
             results['high_freq_files'] = [f for f, _ in file_counter.most_common(10)]
             
             # 提取主要贡献者
             result2 = subprocess.run(
-                ['git', 'log', '--format=%aN', '-100'],
+                ['git', 'log', '--format=%aN', log_range],
                 cwd=project_path,
                 capture_output=True,
                 text=True,
@@ -131,6 +163,8 @@ def pre_research_scan(project_path):
     except:
         results['high_freq_files'] = []
         results['top_authors'] = []
+        results['total_commits'] = 0
+        results['is_shallow'] = True
     
     # 5. 文档扫描
     print("  [Step 0.5] 文档扫描...")
@@ -306,21 +340,39 @@ def generate_research_plan_markdown(project_path, project_name, depth, max_files
     else:
         lines.append("- 未识别到明确入口点\n")
     
+    # 显示项目配置文件（可能包含入口点定义）
+    if pre_results.get('project_config_files'):
+        lines.append(f"\n> 📦 项目配置: {', '.join(['`' + f + '`' for f in pre_results['project_config_files']])}（可能定义了 CLI/脚本入口）\n")
+    
     lines.append("\n")
     
-    lines.append("### 2.4 高频修改文件（最近 100 commits）\n\n")
-    if pre_results['high_freq_files']:
-        for f in pre_results['high_freq_files'][:5]:
-            lines.append(f"- `{f}`\n")
+    is_shallow = pre_results.get('is_shallow', False)
+    total_commits = pre_results.get('total_commits', 0)
+    
+    if is_shallow:
+        lines.append(f"### 2.4 高频修改文件\n\n")
+        lines.append(f"> ⚠️ 浅克隆（仅 {total_commits} 个 commit），Git 历史分析受限。如需完整分析，请运行 `git fetch --unshallow`\n\n")
+        if pre_results['high_freq_files']:
+            for f in pre_results['high_freq_files'][:5]:
+                lines.append(f"- `{f}`\n")
+        else:
+            lines.append("- 无足够数据\n")
     else:
-        lines.append("- 无法获取 Git 历史\n")
+        lines.append(f"### 2.4 高频修改文件（最近 {min(total_commits, 100)} commits）\n\n")
+        if pre_results['high_freq_files']:
+            for f in pre_results['high_freq_files'][:5]:
+                lines.append(f"- `{f}`\n")
+        else:
+            lines.append("- 无法获取 Git 历史\n")
     
     lines.append("\n")
     
     lines.append("### 2.5 主要贡献者\n\n")
-    if pre_results['top_authors']:
+    if pre_results.get('top_authors'):
         for a in pre_results['top_authors']:
             lines.append(f"- {a}\n")
+    elif is_shallow:
+        lines.append(f"- ⚠️ 浅克隆仅 {total_commits} 个 commit，贡献者信息不完整\n")
     else:
         lines.append("- 无法获取贡献者信息\n")
     
@@ -569,8 +621,7 @@ def main():
     
     # 同时生成文件列表
     file_list_path = output_path.parent / 'FILE_LIST.md'
-    from generate_file_list import generate_file_list_markdown
-    file_list_md = generate_file_list_markdown(files_info, project_name, language)
+    file_list_md = _gfl.generate_file_list_markdown(files_info, project_name, language)
     
     with open(file_list_path, 'w', encoding='utf-8') as f:
         f.write(file_list_md)
