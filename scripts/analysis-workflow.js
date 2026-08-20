@@ -6,6 +6,16 @@
 //   - opts.schema 只验结构（type/properties/required/enum/const），章节级内容验收归
 //     verify-analysis.py / evidence-check.py（主 agent 在批间 goal 轮执行）
 //
+// ⚠️ 模型路由（实测 2026-08，必须遵守）：
+//   - 子代理继承的是「父 agent 的 options.model 快照」，并非 GUI 会话当前模型——当主 agent
+//     在 GUI 切到新模型后，子代理仍可能锚定旧模型（如 glm-5.3），从而撞上该模型已耗尽的
+//     newapi 配额（429/RATE_LIMIT）而批量失败。
+//   - 解决办法：派发时在 args 传 modelOverride（=主 agent 当前可用模型，如 deepseek-v4-flash），
+//     脚本把它透传给 agent(..., { provider, model })，显式覆盖继承值。若某模型持续 429，
+//     换一个配额未耗尽的模型重试。
+//   - agent() 返回 null 可能是「子代理成功但结果收集失败」（工具层缺陷），此时子代理的
+//     Markdown 产出可能已落盘——主 agent 必须用 evidence-check.py 检查落盘而非仅信返回。
+//
 // 用法（主 agent 在批间 goal 轮调用 workflow 工具，meta.name="source-analyzer-batch"，script=本文件内容，args 如下）：
 //   args = {
 //     "projectPath": "/path/to/project",
@@ -13,11 +23,13 @@
 //     "modules": [                               // 本批模块清单（主 agent 从 PLAN/checkpoint 决定）
 //       { "name": "storage", "path": "lib/storage",
 //         "fileCount": 42, "strategy": "full_three_layers",
-//         "upstreamInterfaces": "（上游模块 interface.md 摘要文本，可空）" }
+//         "upstreamInterfaces": "（上游模块 interface.md 摘要文本，可空）",
+//         "fileList": ["storage/foo.py (120 行)", "..."] }   // 可选：真实文件清单（含行数），杜绝幻觉引用
 //     ],
 //     "glossarySnapshot": "| 概念 | 译名 | 一句话定义 |\n|---|---|---|",  // Glossary.md 快照（只读注入）
 //     "sixPartTemplate": "（可选覆盖：六段式模板正文；缺省用内置）",
-//     "retryFailed": true                        // 结构不合格是否批内重试一次
+//     "retryFailed": true,                       // 结构不合格是否批内重试一次
+//     "modelOverride": { "provider": "newapi", "model": "deepseek-v4-flash" }  // 必填：显式子代理模型，避免继承旧模型撞配额限流
 //   }
 //   返回（主 agent 拿到后写 checkpoint、跑 verify/evidence-check、合并 Glossary 提案）：
 //   { "batchSummary": {...}, "results": [ {module, status, report} ... ] }
@@ -71,7 +83,15 @@ function validateReport(r, modName) {
 
 phase(`批次派发：${args.modules.length} 个模块`)
 
-const attempt = (mod) => agent(buildPrompt(mod, args), { schema: reportSchema, label: `analyze:${mod.name}` })
+// 显式模型覆盖：优先取 args.modelOverride（主 agent 派发时传入的当前可用模型），
+// 否则继承父 agent 模型（⚠️ 该值可能是旧快照，撞配额限流时请务必传 modelOverride）。
+const modelOpts = (args.modelOverride && args.modelOverride.model)
+  ? {
+      ...(args.modelOverride.provider ? { provider: args.modelOverride.provider } : {}),
+      model: args.modelOverride.model
+    }
+  : {}
+const attempt = (mod) => agent(buildPrompt(mod, args), { schema: reportSchema, label: `analyze:${mod.name}`, ...modelOpts })
 
 const first = await parallel(args.modules.map((mod) => () => attempt(mod)))
 
@@ -79,28 +99,37 @@ const first = await parallel(args.modules.map((mod) => () => attempt(mod)))
 const isBad = (r, name) => r === null || validateReport(r, name) !== null
 const badIdx = first.map((r, i) => (isBad(r, args.modules[i].name) ? i : -1)).filter((i) => i >= 0)
 if (badIdx.length && args.retryFailed !== false) {
-  log(`结构不合格 ${badIdx.length} 项，各重试一次：${badIdx.map((i) => args.modules[i].name).join(", ")}`)
+  log(`结构不合格 ${badIdx.length} 项，各重试一次：${badIdx.map((i) => args.modules[i].name).join(", ")}（model=${modelOpts.model || "继承"}）`)
   const retried = await parallel(badIdx.map((i) => () => attempt(args.modules[i])))
   badIdx.forEach((ri, k) => { first[ri] = retried[k] })
 }
 
 let results = []
-let ok = 0, failed = []
+let ok = 0, failed = [], needsDiskVerify = []
 for (const [i, r] of first.entries()) {
   const name = args.modules[i].name
   const vErr = validateReport(r, name)
   if (!vErr) { ok++; results.push({ module: name, status: "ok", report: r }) }
-  else { failed.push(`${name}（${vErr}）`); results.push({ module: name, status: "failed", reason: vErr, report: r }) }
+  else {
+    // agent() 返回 null/坏 JSON 并不等于子代理没干活：子代理产出是直接落盘的，
+    // 收集失败（工具层缺陷）或限流失败都可能。统一归为 needsDiskVerify，由主 agent
+    // 用 evidence-check.py 核对 `${args.outputBase}/10-module-deep/${name}/` 是否真有落盘。
+    failed.push(`${name}（${vErr}）`)
+    results.push({ module: name, status: "failed", reason: vErr, report: r, needsDiskVerify: true })
+    needsDiskVerify.push(name)
+  }
 }
 
 phase("批次汇总")
 const batchSummary = {
   batchModules: args.modules.length,
   ok, failed,
+  modelUsed: modelOpts.model || "继承父agent模型",
   tokenEstimateTotal: results.reduce((s, r) => s + (r.report ? (r.report.tokenEstimate || 0) : 0), 0),
   lowCompleteness: results.filter((r) => r.report && r.report.completenessSelfScore < 0.8).map((r) => r.module),
-  note: "失败/低完成度模块交主 agent：直接 subagent send_message 续跑或兜底手写；内容级验收用 verify-analysis + evidence-check"
+  needsDiskVerify,
+  note: "失败项可能已落盘但 report 未收集（需 evidence-check 核对）；若持续全失败，优先怀疑 newapi 配额限流（429/RATE_LIMIT），换 args.modelOverride 到配额未耗尽的模型重跑；内容级验收用 verify-analysis + evidence-check"
 }
-log(`完成 ${ok}/${args.modules.length}，失败：${failed.join(", ") || "无"}`)
+log(`完成 ${ok}/${args.modules.length}，失败：${failed.join(", ") || "无"}；待盘面核验：${needsDiskVerify.join(", ") || "无"}`)
 
 return { batchSummary, results }
