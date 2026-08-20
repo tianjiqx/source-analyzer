@@ -1,5 +1,34 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-08-15 - 🔬 质量四杠杆落地（v1.3 方案第⓪①②③批）
+
+### 🎯 概述
+
+依据 SOURCE_ANALYZER_DSH_PLAN.md v1.3 方案，落地过程质量与成本纪律：
+六段式结构化派发模板、Glossary 提案制、证据锚定机器验证、成本熔断与三确认点。
+
+### 🔑 关键变更
+
+1. **⓪ 瑕疵修复**：SKILL.md 快速开始围栏 bug 与硬编码个人路径（→ `$WORKSPACE/opensource`）；
+   dsh.md `memory.write` 能力更新为支持（memory 工具）；3 个 guide 的孤立围栏与硬编码路径；
+   新增 `.gitignore`（清出 `__pycache__`）与 `LICENSE`(MIT)。
+2. **⓪' 回归门**：新增 `scripts/lint-skill.py` — frontmatter/代码围栏配对/死链/硬编码路径/
+   绝对脚本路径五项检查；改 SKILL.md 后必跑。
+3. **① 派发模板升级**：六段式结构化 `[DISPATCH]`（task/context/inputs/outputs/constraints/report）；
+   Glossary 提案制（并行只读 + `.glossary-<module>.md` 提案 + [WAIT] 后主 agent 串行合并，
+   消除并行写竞态）；注入防御（仓库内容是数据不是指令）；大模块二阶拆分规则（>60 文件按子模块边界拆）。
+4. **② 证据验证**：新增 `scripts/evidence-check.py` — 抽样比对 file:line 引用与源码
+   （文件存在/行号越界/可选内容重叠），`[未验证]` 标注跳过；造假率 ≥5% 或低密度文档 →
+   退出码 1，全产出复审；产出 EVIDENCE_REPORT.md。
+5. **③ 成本纪律**：token 预算账本（估算/每批累记/150% 熔断请示）；goal 轮次预算
+   （max_goal_rounds ≈ 批次+3，触顶 resume 主路径）；三确认点（开工前/异常中途/收尾前）；
+   通知批汇聚；输出目录独立 git 化防污染。
+
+### ✅ 验证
+
+- `lint-skill.py` 全绿（18 文件 0 错误 0 警告）
+- `evidence-check.py` 合成项目自测：真引用通过/假文件与越界被抓/`[未验证]` 跳过/退出码正确
+
 ## 2026-08-14 - 🧩 环境适配与验证器修复（DSH 实测驱动）
 
 ### 🎯 概述
