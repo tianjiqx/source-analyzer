@@ -729,6 +729,8 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 | `detect-visualization.sh` | 🎨 检测项目可视化支持（Mermaid/PlantUML） |
 | `orchestrator.py` | 自动编排执行（健康检查 + 异常处理） |
 | `verify-analysis.py` | 验证分析文档完整性和质量（支持 `--recursive` 模式） |
+| `evidence-check.py` | 🔍 **证据锚定验证** — 抽样比对文档中 file:line 引用与源码真实行（文件存在/行号范围/可选内容重叠），造假率 ≥5% 或低密度文档判不合格 |
+| `lint-skill.py` | 🧪 skill 回归门 — frontmatter/围栏配对/死链/硬编码路径检查（改 SKILL.md 后必跑） |
 | `review-agent.py` | 独立审查代理 |
 | `quick-scan.sh` | 快速扫描项目结构 |
 

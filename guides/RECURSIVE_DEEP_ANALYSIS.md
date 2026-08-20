@@ -290,7 +290,7 @@ python3 scripts/recursive-orchestrator.py output-dir \
 3. **模板复读检测**：不同模块的同类文档（如 quality-score.md）若结构完全相同仅替换名词，标记为低质量，返工
 4. **术语一致性**：Glossary.md 中无冲突译名（Phase 3 已统一）
 
-> 以上门禁是 agent 自查协议（写入本指南供执行时遵循），暂不实现为脚本；若后续某项门禁在多个项目中反复触发，再固化为 verify-analysis.py 的检查项。
+> 门禁 1 已固化为脚本：`python3 $SKILL_DIR/scripts/evidence-check.py <analysis-dir> --project <project-path> --sample 0.2 --min-per-doc 3`；造假率 ≥5% 或存在低密度文档 → 退出码 1，按协议全产出复审。其余门禁（空洞文档/模板复读）仍为 agent 自查协议；若后续在多个项目中反复触发，再固化为 verify-analysis.py 的检查项。
 
 ---
 
