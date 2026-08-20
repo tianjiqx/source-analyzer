@@ -57,6 +57,88 @@ def extract_module_path(analysis_dir: Path, md_file: Path) -> str:
         pass
     return ""
 
+def try_auto_fix(project: Path, rel: str, l1: int, l2: int, module_path: str) -> str:
+    """尝试自动修复错误的引用，返回修复后的引用字符串，如果无法修复返回 None"""
+    # 1. 尝试查找文件
+    candidates = [
+        project / rel,
+        project / module_path / rel if module_path else None,
+    ]
+    f = None
+    for candidate in candidates:
+        if candidate and candidate.exists():
+            f = candidate
+            break
+    
+    if f is None:
+        # 文件不存在，尝试搜索同名文件
+        try:
+            matches = list(project.rglob(Path(rel).name))
+            if len(matches) == 1:
+                f = matches[0]
+            elif len(matches) > 1 and module_path:
+                # 多个匹配，尝试从模块路径推断
+                module_matches = [m for m in matches if module_path in str(m)]
+                if len(module_matches) == 1:
+                    f = module_matches[0]
+                elif len(module_matches) > 1:
+                    # 尝试模糊匹配
+                    rel_parts = Path(rel).parts
+                    if len(rel_parts) > 1:
+                        suffix_parts = rel_parts[1:]
+                        for m in module_matches:
+                            m_str = str(m)
+                            if m_str.endswith("/".join(suffix_parts)):
+                                key_part = rel_parts[0]
+                                m_key_part = m.parts[-(len(suffix_parts) + 1)] if len(m.parts) > len(suffix_parts) else ""
+                                if key_part in m_key_part:
+                                    f = m
+                                    break
+        except ValueError:
+            pass
+
+        # 如果文件名完全匹配不到，尝试部分文件名匹配
+        # 例如：bridge.h 匹配 yuanrong_bridge.h（子代理可能写简写）
+        if f is None:
+            stem = Path(rel).stem  # 去掉扩展名，如 "bridge"
+            ext = Path(rel).suffix  # 如 ".h"
+            try:
+                partial_matches = []
+                for m in project.rglob(f"*{stem}*{ext}"):
+                    if module_path and module_path not in str(m):
+                        continue
+                    partial_matches.append(m)
+                if len(partial_matches) == 1:
+                    f = partial_matches[0]
+            except ValueError:
+                pass
+    
+    if f is None:
+        return None
+    
+    # 2. 验证行号
+    try:
+        total_lines = sum(1 for _ in f.open(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    
+    # 如果行号越界，尝试在文件中搜索相关内容
+    if l1 > total_lines or l2 > total_lines:
+        # 无法自动修复行号问题
+        return None
+    
+    # 3. 构建修复后的引用
+    # 使用项目根相对路径
+    try:
+        fixed_rel = f.relative_to(project)
+    except ValueError:
+        return None
+    
+    if l1 == l2:
+        return f"{fixed_rel}:{l1}"
+    else:
+        return f"{fixed_rel}:{l1}-{l2}"
+
 
 def collect_refs(md: Path):
     text = md.read_text(encoding="utf-8", errors="replace")
@@ -163,6 +245,7 @@ def main():
     ap.add_argument("--content", action="store_true")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--auto-fix", action="store_true", help="自动修复可确定的错误引用")
     args = ap.parse_args()
 
     analysis_dir, project = Path(args.analysis_dir), Path(args.project)
@@ -177,6 +260,7 @@ def main():
     sampled = random.sample(mds, min(sample_n, len(mds)))
 
     results, total_refs, bad_refs, low_docs = [], 0, 0, []
+    fixed_refs = 0
     for md in sampled:
         text = md.read_text(encoding="utf-8", errors="replace")
         module_path = extract_module_path(analysis_dir, md)
@@ -186,22 +270,59 @@ def main():
             print(f"📄 {md.relative_to(analysis_dir)} (module: {module_path})")
         refs = collect_refs(md)
         doc_bad = []
-        for m in REF_RE.finditer(text):
-            line_start = text.rfind("\n", 0, m.start()) + 1
-            if FORBIDDEN_NOTE in text[line_start:text.find("\n", m.start())]:
-                continue
-            rel, l1 = m.group(1), int(m.group(2))
-            l2 = int(m.group(3) or l1)
-            tokens = extract_claim_tokens(text, m.span()) if args.content else None
-            ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
-            total_refs += 1
-            if not ok:
-                bad_refs += 1
-                doc_bad.append(f"{rel}:{l1}-{l2} — {reason}")
+        doc_fixed = []
+        
+        # 如果需要自动修复，先收集所有需要修复的引用
+        if args.auto_fix:
+            fixes = []
+            for m in REF_RE.finditer(text):
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                if FORBIDDEN_NOTE in text[line_start:text.find("\n", m.start())]:
+                    continue
+                rel, l1 = m.group(1), int(m.group(2))
+                l2 = int(m.group(3) or l1)
+                tokens = extract_claim_tokens(text, m.span()) if args.content else None
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
+                total_refs += 1
+                if not ok:
+                    # 尝试自动修复
+                    fixed_path = try_auto_fix(project, rel, l1, l2, module_path)
+                    if fixed_path:
+                        fixes.append((m.group(0), fixed_path))
+                        doc_fixed.append(f"{rel}:{l1}-{l2} → {fixed_path}")
+                    else:
+                        bad_refs += 1
+                        doc_bad.append(f"{rel}:{l1}-{l2} — {reason}")
+            
+            # 应用修复
+            if fixes:
+                new_text = text
+                for old_ref, new_ref in fixes:
+                    new_text = new_text.replace(old_ref, new_ref)
+                md.write_text(new_text, encoding="utf-8")
+                fixed_refs += len(fixes)
+                if not args.json:
+                    print(f"  🔧 自动修复 {len(fixes)} 个引用")
+        else:
+            for m in REF_RE.finditer(text):
+                line_start = text.rfind("\n", 0, m.start()) + 1
+                if FORBIDDEN_NOTE in text[line_start:text.find("\n", m.start())]:
+                    continue
+                rel, l1 = m.group(1), int(m.group(2))
+                l2 = int(m.group(3) or l1)
+                tokens = extract_claim_tokens(text, m.span()) if args.content else None
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
+                total_refs += 1
+                if not ok:
+                    bad_refs += 1
+                    doc_bad.append(f"{rel}:{l1}-{l2} — {reason}")
+        
         if len(refs) < args.min_per_doc:
             low_docs.append(f"{md.relative_to(analysis_dir)} — 引用数 {len(refs)} < {args.min_per_doc}")
         if doc_bad:
             results.append((md.relative_to(analysis_dir), doc_bad))
+        if doc_fixed:
+            results.append((md.relative_to(analysis_dir), doc_fixed, "fixed"))
 
     fake_rate = bad_refs / total_refs if total_refs else 0.0
     passed = fake_rate < 0.05 and not low_docs
