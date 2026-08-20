@@ -159,6 +159,52 @@ def collect_refs(md: Path):
     return refs
 
 
+# —— 允许引用白名单（--filelist 注入）——
+# 用于裸文件名/短路径消歧：子代理被要求只引用 fileList 内文件，验证时用同一
+# 白名单把裸名（如 base.py）归位到唯一完整路径（如 openviking/parse/base.py）。
+_FILELIST_PATHS = []          # 完整路径列表（项目根相对）
+_FILELIST_BY_BASENAME = {}    # basename -> [完整路径,...]
+
+def _load_filelist(filelist_arg):
+    global _FILELIST_PATHS, _FILELIST_BY_BASENAME
+    _FILELIST_PATHS, _FILELIST_BY_BASENAME = [], {}
+    if not filelist_arg:
+        return
+    try:
+        data = json.loads(Path(filelist_arg).read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return
+        for item in data:
+            if not isinstance(item, str):
+                continue
+            p = item.split(" (")[0].strip()  # 去掉 " (N 行)" 后缀
+            if not p:
+                continue
+            _FILELIST_PATHS.append(p)
+            bn = Path(p).name
+            _FILELIST_BY_BASENAME.setdefault(bn, []).append(p)
+    except (OSError, ValueError):
+        pass
+
+def _filelist_disambiguate(rel):
+    """用白名单把裸文件名/短路径归位到唯一完整路径；无法唯一确定返回 None。"""
+    if not _FILELIST_PATHS:
+        return None
+    bn = Path(rel).name
+    cands = _FILELIST_BY_BASENAME.get(bn, [])
+    # 优先：rel 是某白名单完整路径的子串/后缀（覆盖 'ragfs/src/lib.rs' 这类短路径）
+    for p in _FILELIST_PATHS:
+        if p == rel or p.endswith("/" + rel) or (p.startswith(rel + "/")) or (rel in p):
+            if cands and p not in cands:
+                cands.append(p)
+    # 去掉重复
+    seen, uniq = set(), []
+    for p in cands:
+        if p not in seen:
+            seen.add(p); uniq.append(p)
+    return uniq[0] if len(uniq) == 1 else None
+
+
 def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, claim_tokens=None, module_path: str = ""):
     """返回 (ok, reason)"""
     # 尝试多种路径：项目根相对 / 模块相对
@@ -212,6 +258,25 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
                                         f = m
                                         break
                 if f is None:
+                    # 白名单消歧：裸文件名/短路径 → 注入 fileList 唯一完整路径。
+                    # 多候选（如多个 lib.rs）时用「行号界内」过滤取唯一。
+                    cands = []
+                    for p in _FILELIST_PATHS:
+                        if p == rel or p.endswith("/" + rel) or Path(p).name == Path(rel).name:
+                            cands.append(p)
+                    uniq = [p for p in dict.fromkeys(cands) if (project / p).exists()]
+                    if len(uniq) == 1:
+                        t = sum(1 for _ in (project / uniq[0]).open(encoding="utf-8", errors="replace"))
+                        if 1 <= l1 and l2 >= l1 and l2 <= t:
+                            return True, ""
+                    elif len(uniq) > 1:
+                        viable = []
+                        for p in uniq:
+                            t = sum(1 for _ in (project / p).open(encoding="utf-8", errors="replace"))
+                            if 1 <= l1 and l2 >= l1 and l2 <= t:
+                                viable.append(p)
+                        if len(viable) == 1:
+                            return True, ""
                     # 无法确定，标记为"文件不唯一"但降低严重性
                     return False, f"文件不唯一: {rel}（找到 {len(matches)} 个匹配，建议子代理使用完整路径）"
             else:
@@ -254,7 +319,9 @@ def main():
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--auto-fix", action="store_true", help="自动修复可确定的错误引用")
+    ap.add_argument("--filelist", default=None, help="允许引用白名单 JSON（数组，每项为 'path (N 行)' 或 'path'），用于裸文件名/短路径消歧")
     args = ap.parse_args()
+    _load_filelist(args.filelist)
 
     analysis_dir, project = Path(args.analysis_dir), Path(args.project)
     if not analysis_dir.is_dir():
