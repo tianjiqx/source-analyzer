@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# 分析过程中间产物（输出目录自身不入库）
+.task-report-*.json
+.task-complete.json
+.checkpoint.json
+.glossary-*.md
+
+# 系统
+.DS_Store
+*.swp

@@ -219,7 +219,6 @@
 Volcano架构 → 解释执行开销 → IPC低 → 吞吐低
                  ↓
            CPU利用率10%
-```
 
 ---
 
@@ -485,14 +484,14 @@ Volcano架构 → 解释执行开销 → IPC低 → 吞吐低
 
 ### 问题相关文献
 
-- [文献标题](链接) - [说明]
+- 文献标题 — 说明（引用来源）
 
 示例:
 - [Everything You Always Wanted to Know About Compiled and Vectorized Queries](https://www.vldb.org/pvldb/vol11/p2209-kersten.pdf) - 问题根因分析
 
 ### 解决方案文献
 
-- [文献标题](链接) - [说明]
+- 文献标题 — 说明（引用来源）
 
 示例:
 - [MonetDB/X100论文](http://cidrdb.org/cidr2005/papers/P19.pdf) - 向量化执行原理

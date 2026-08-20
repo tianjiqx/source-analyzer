@@ -853,7 +853,7 @@ python3 generate-research-plan.py \
 # OceanBase 详细研究计划
 
 **目标**: 深度分析 OceanBase HTAP 架构 + 核心代码
-**路径**: `/home/tianjiqx/opensource/oceanbase`
+**路径**: `$WORKSPACE/opensource/oceanbase`
 **技术栈**: C++,分布式数据库
 **预计**: 8 小时
 
@@ -886,7 +886,6 @@ python3 generate-research-plan.py \
 ### Task 6: ObSchemaService.cpp
 - 分析: Schema 管理、数据结构
 - Output: 20-ObSchemaService.cpp-analysis.md
-```
 
 ---
 

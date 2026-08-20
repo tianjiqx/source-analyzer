@@ -196,8 +196,8 @@ gh repo clone infiniflow/ragflow -- --depth=1
 ```bash
 # Step 0: 下载项目（如尚未下载）
 gh repo clone <owner>/<repo> -- --depth=1
-# 项目统一存放在 /home/tianjiqx/opensource/
-cd /home/tianjiqx/opensource
+# 项目存放目录由环境决定，建议统一放在 $WORKSPACE/opensource/
+cd $WORKSPACE/opensource
 
 # Step 1: 智能分析（自动检测项目类型 + 推荐模板）
 # ⚠️ 必须传入 --model 参数记录当前使用的模型名
@@ -209,7 +209,6 @@ python3 $SKILL_DIR/scripts/smart-analyze.py /path/to/project \
 python3 $SKILL_DIR/scripts/smart-analyze.py /path/to/project \
   --model "zai/glm-5.2" \
   -o $OUTPUT_BASE/project-name
-```
 
 # Step 2: 生成研究计划
 python3 $SKILL_DIR/scripts/generate-research-plan.py /path/to/project \
@@ -1029,7 +1028,7 @@ python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
 
 | 钩子 | 能力接口 | 用途 | 跳过时记录位置 |
 |------|----------|------|---------------|
-| 记忆回写 | `memory.write` | 长期记忆文件（OpenClaw 默认 `$WORKSPACE/MEMORY.md`） | VERSION.md「可选钩子跳过记录」 |
+| 记忆回写 | `memory.write` | 长期记忆（OpenClaw：`$WORKSPACE/MEMORY.md`；**DSH：memory 工具 target=project，可选**） | VERSION.md「可选钩子跳过记录」 |
 | 对比数据库 | `db.update` | 更新 `$SKILL_DIR/references/project-comparison-db.md` | VERSION.md 同上 |
 | 定时恢复 | `schedule.recurring` | 断点自动恢复（OpenClaw cron / 系统 crontab） | VERSION.md 同上 |
 | 会话检查 | `progress.check` | 会话开始时检查未完成任务 | — |
@@ -1044,7 +1043,7 @@ python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
 ### B1. 回写记忆文件（可选钩子 `memory.write`）
 
 **仅当环境适配层声明 `memory.write` 能力时执行**（如 OpenClaw：`$WORKSPACE/MEMORY.md`）。
-DSH 等无长期记忆消费者的环境**跳过**（恢复机制 = 原生 goal 轮次 + 输出目录的 PLAN/checkpoint）。
+DSH 环境可用 memory 工具（target=project）写 1-2 行分析进展摘要（可选，非恢复依赖——恢复机制 = 原生 goal 轮次 + 输出目录的 PLAN/checkpoint）。
 
 ```markdown
 ### [项目名] - [定位] (日期)

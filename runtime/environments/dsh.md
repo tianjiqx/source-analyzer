@@ -27,8 +27,8 @@
 | `progress.restore` | `get_goal` + `update_goal(action=resume)`（会话恢复/续跑时） |
 | `progress.check` | ❌ 由 goal 自动延续轮承担 |
 | `schedule.recurring` | ❌ 不支持（goal 轮次已承担断点恢复，cron 冗余） |
-| `notify.silent` | ❌ 不支持（本会话上下文即通知通道） |
-| `memory.write` | ❌ 不支持（无长期记忆消费者；写入 MEMORY.md 是假闭环） |
+| `notify.silent` | ⚠️ 环境相关：Web GUI 会话即通知通道；长任务可选 `de_channel_send`（若装 dsh 渠道插件）推送批级汇总 |
+| `memory.write` | ✅ 支持（memory 工具，target=project/daily 记录分析进展；可选） |
 | `db.update` | ❌ 不支持（`$SKILL_DIR` 只读挂载） |
 | `file.write` | 仅会话工作区；先探测可写性（如 `touch` 试写） |
 | `shell.exec` | bash 工具；`/tmp` 不跨调用持久（需重建或写入工作区） |
@@ -37,11 +37,11 @@
 
 | 钩子 | DSH 动作 | 记录位置 |
 |------|---------|---------|
-| 记忆回写 | **跳过**：无记忆消费者，恢复靠 goal 轮次 + 输出目录 | VERSION.md「可选钩子跳过记录」 |
-| 对比数据库 | **跳过**：`$SKILL_DIR` 只读 | VERSION.md 同上 |
-| 定时恢复 | **跳过**：goal 自动延续轮承担 | VERSION.md 同上 |
+| 记忆回写 | ✅ 可选：memory 工具 target=project 写 1-2 行分析进展（不做大段回写，恢复仍靠 goal 轮 + 输出目录） | VERSION.md 记录已写轨道 |
+| 对比数据库 | **跳过**：`$SKILL_DIR` 只读 | VERSION.md「可选钩子跳过记录」 |
+| 定时恢复 | **跳过**：goal 自动延续轮承担（可选第二保险：task-board cron） | VERSION.md 同上 |
 | 会话检查 | **跳过**：goal 轮次承担 | — |
-| 完成通知 | **跳过**：即本会话上下文 | — |
+| 完成通知 | 可选：`de_channel_send` 批级汇总（未配置渠道则跳过，会话即通道） | — |
 
 ## 子代理中断恢复协议（本次实测 5 次踩坑总结）
 

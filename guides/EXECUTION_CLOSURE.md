@@ -20,7 +20,7 @@
 ### [项目名称] - [项目定位] (分析日期)
 **位置**: `$OUTPUT_BASE/[project-name]/`
 **GitHub**: https://github.com/[owner]/[repo]
-**源码**: `/home/tianjiqx/opensource/[project-name]` (已下载/未下载)
+**源码**: `$WORKSPACE/opensource/[project-name]` (已下载/未下载)
 
 **关键数据**:
 - Stars: [数字]
@@ -62,7 +62,7 @@
 ### PixelRAG 视觉检索增强生成系统 (2026-06-27)
 **位置**: `$OUTPUT_BASE/pixelrag/`
 **GitHub**: https://github.com/StarTrail-org/PixelRAG
-**源码**: `/home/tianjiqx/opensource/pixelrag` (已下载)
+**源码**: `$WORKSPACE/opensource/pixelrag` (已下载)
 
 **关键数据**:
 - Stars: 新兴项目
@@ -195,7 +195,7 @@
 
 ```bash
 # 1. 检查项目更新
-cd /home/tianjiqx/opensource/[project-name]
+cd $WORKSPACE/opensource/[project-name]
 git fetch
 git log HEAD..origin/main --oneline
 
