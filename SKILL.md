@@ -251,23 +251,35 @@ python3 $SKILL_DIR/scripts/verify-analysis.py output-dir --recursive
 ### 手动执行
 
 ```bash
-# Layer 1: 项目级分析（并行派发）
-[DISPATCH: task="分析项目概览，输出到 00-README.md" label="overview"]
-[DISPATCH: task="分析架构设计，输出到 01-architecture.md" label="architecture"]
+# Layer 1: 项目级分析（并行派发；每个 DISPATCH 都必须用六段式模板，见"六段式结构化派发模板"节）
+[DISPATCH: 六段式模板拼装 → task="分析项目概览，输出到 00-README.md" label="overview"]
+[DISPATCH: 六段式模板拼装 → task="分析架构设计，输出到 01-architecture.md" label="architecture"]
 
 # Layer 2: 模块级分析（按模块派发）
-[DISPATCH: task="分析 core 模块" label="module-core"]
+[DISPATCH: 六段式模板拼装 → task="分析 core 模块" label="module-core"]
 
 # Layer 3: 文件粒度分析（按文件组派发）
-[DISPATCH: task="分析 Bootstrap.java, Service.java" label="file-group-1"]
+[DISPATCH: 六段式模板拼装 → task="分析 Bootstrap.java, Service.java" label="file-group-1"]
 ```
 
 > `[DISPATCH]` 是环境无关的派发指令。适配层负责翻译为具体实现：
 > - **OpenClaw**: `sessions_spawn(task=..., label=..., mode="run")`
 > - **opencode**: Task tool / 子进程
-> - **DSH**: `subagent` 工具（后台默认，`run_in_background=true`）
+> - **DSH**: `subagent` 工具（后台默认，`run_in_background=true`）；≥2 个子任务的批次优先用 `workflow` 工具（见 `runtime/environments/dsh.md`）
 > - **纯 CLI**: 串行执行
 > 详见 `runtime/adapter.md`
+
+---
+
+## ⛔ 主 agent 编排纪律（所有分析模式全局生效）
+
+以下纪律对标准三层 / 最大分析 / 递归深度 / 费曼学习卡片**全部模式生效**，来源于实战复盘（2026-08 LightRAG 分析）：
+
+1. **主 agent 零代码阅读**：主 agent 只读 README/文档、自己的产出（PLAN/Glossary/INDEX/task-report/验证报告）和文件清单（glob/wc/find 输出、module manifest）。**禁止逐行读取源码文件**——那是子代理的工作。需要了解项目结构时，先派"项目侦察"子代理输出 `.project-scout.json`（模块清单、文件数、关键文件路径、技术栈），主 agent 据此制定 PLAN。理由：主 agent 上下文是 4-8 小时流水线中最稀缺的资源，被代码污染后编排质量必然劣化。
+2. **六段式派发全局强制**：见下节"六段式结构化派发模板"——它不再只属于递归深度模式，任何分析模式派发子代理都必须使用。单段任务描述（"你是一个源码分析专家，请分析…"）是派发漂移之源，**禁止**。
+3. **批次派发用 workflow**：≥2 个子任务的批次（DSH 环境）优先用 `workflow` 工具（`analysis-workflow.js`），代码化拼装 + 结构门 + 批内重试；仅在 workflow 工具本身报错时回退直接 `subagent`（回退派发仍须六段式）。
+4. **禁止轮询等待**：不要 `sleep && ls` / 反复 `list_agents` 等子代理。后台子代理完成后会自动通知；派发之间做有用的事（验收上批产出、合并 Glossary 提案、更新 checkpoint）或直接结束回合。
+5. **每批必验收**：每个 [WAIT] 后运行 `verify-analysis.py` **和** `evidence-check.py` 才能标记批次完成；验收不过 → `send_message` 补齐一次 → 仍不过 → 主 agent 兜底手写并注明。
 
 ---
 
@@ -480,7 +492,7 @@ done
 > **提示**: 对于 100+ 模块的超大型项目，先用 `--priority-only` 分析 high 重要性模块，再按需扩展。  
 > **并行限制**: 并行度取决于运行环境。OpenClaw 建议 max-parallel=8，opencode 建议 4-6，纯 CLI 为 1（串行）。
 
-### 六段式结构化派发模板（质量杠杆核心，所有模块级 DISPATCH 必须使用）
+### 六段式结构化派发模板（质量杠杆核心，**所有模式所有 DISPATCH 必须使用**）
 
 模糊的派发指令是产出漂移之源。模块级递归分析的每个 `[DISPATCH]` 必须按以下六段结构拼装：
 
