@@ -185,6 +185,44 @@ def check_index_consistency(analysis_dir: Path) -> dict:
         rel_path = str(Path(orphan).relative_to(analysis_dir))
         result['orphan_files'].append(rel_path)
 
+    # 陈旧状态检查：INDEX 标记"待生成/失败/⏳"但目标文件已实际存在
+    # （实战：LightRAG LEARN_03 重试成功后 INDEX 未回写，仍标 ⏳）
+    result['stale_pending'] = []
+    stale_markers = ('⏳', '待生成', '未生成', '生成失败', '待补充')
+    for index_file in index_files:
+        content = index_file.read_text()
+        for line_no, line in enumerate(content.splitlines(), 1):
+            if not any(marker in line for marker in stale_markers):
+                continue
+            # 候选 1：该行链接到已存在的 .md 文件
+            linked = False
+            for link in extract_links_from_markdown(line):
+                abs_path = (index_file.parent / link['path']).resolve()
+                if abs_path.suffix == '.md' and abs_path.exists():
+                    result['stale_pending'].append({
+                        'file': str(abs_path.relative_to(analysis_dir)),
+                        'index': str(index_file.relative_to(analysis_dir)),
+                        'line': line_no,
+                        'line_text': line.strip()[:80],
+                    })
+                    linked = True
+            if linked:
+                continue
+            # 候选 2：无链接的裸标记行——按行内命名 token（如 LEARN_03 / LEARN_03_XXX）
+            # 在 INDEX 同目录树中匹配实际存在的文件名
+            for token in re.findall(r'[A-Za-z0-9]+_[A-Z0-9_]+|\bLEARN_\d+\b|\b[A-Z]+_\d+\b', line):
+                for hit in index_file.parent.rglob(f'*{token}*.md'):
+                    rel_hit = hit.relative_to(analysis_dir)
+                    # 命中文件不能自身就是那个 INDEX
+                    if hit.name != 'INDEX.md':
+                        result['stale_pending'].append({
+                            'file': str(rel_hit),
+                            'index': str(index_file.relative_to(analysis_dir)),
+                            'line': line_no,
+                            'line_text': line.strip()[:80],
+                        })
+                        break
+
     return result
 
 
@@ -196,9 +234,17 @@ def format_index_consistency(index_consistency: dict) -> str:
         return "❌ INDEX.md 不存在"
     phantom = len(index_consistency['phantom_refs'])
     orphan = len(index_consistency['orphan_files'])
-    if phantom == 0 and orphan == 0:
+    stale = len(index_consistency.get('stale_pending', []))
+    if phantom == 0 and orphan == 0 and stale == 0:
         return "✅ 完全一致"
-    return f"⚠️ {phantom} 个幽灵引用, {orphan} 个孤儿文件"
+    parts = []
+    if phantom:
+        parts.append(f"{phantom} 个幽灵引用")
+    if orphan:
+        parts.append(f"{orphan} 个孤儿文件")
+    if stale:
+        parts.append(f"{stale} 个陈旧待生成标记")
+    return "⚠️ " + ", ".join(parts)
 
 
 def format_index_consistency_detail(index_consistency: dict) -> str:
@@ -213,7 +259,17 @@ def format_index_consistency_detail(index_consistency: dict) -> str:
     lines.append(f"**有效引用**: {index_consistency['valid_links']}")
     lines.append(f"**幽灵引用**: {len(index_consistency['phantom_refs'])}")
     lines.append(f"**孤儿文件**: {len(index_consistency['orphan_files'])}")
+    lines.append(f"**陈旧待生成标记**: {len(index_consistency.get('stale_pending', []))}")
     lines.append("")
+    
+    if index_consistency.get('stale_pending'):
+        lines.append("### 陈旧待生成标记（文件已存在但 INDEX 仍标 ⏳/待生成——重试成功后未回写）")
+        lines.append("")
+        for s in index_consistency['stale_pending'][:10]:
+            lines.append(f"- `{s['file']}` ← {s['index']}:{s['line']}「{s['line_text']}」")
+        if len(index_consistency['stale_pending']) > 10:
+            lines.append(f"- ... 还有 {len(index_consistency['stale_pending']) - 10} 个")
+        lines.append("")
     
     if index_consistency['phantom_refs']:
         lines.append("### 幽灵引用（INDEX 有但文件不存在）")
@@ -338,6 +394,7 @@ def count_code_blocks(content: str) -> int:
 
 def check_distillation_sections(content: str) -> dict:
     """检查蒸馏章节（设计洞察和隐含陷阱）"""
+    line_count = content.count("\n") + 1
     result = {
         "has_insights": False,
         "has_gotchas": False,
@@ -368,6 +425,8 @@ def check_distillation_sections(content: str) -> dict:
         r"原则\s*\d+[:：]",  # Match "原则 1:" or "原则 1："
         r">\s*\*\*原则\*\*[:：]",  # Match "> **原则**:" format (unnumbered)
         r"^\d+\.\s*\*\*[^*]+\*\*[:：]",  # Match "1. **标题**:" format (numbered list with bold title)
+        r"###\s*(?:洞察|Insight)\s*\d+",  # Match "### 洞察 1:"（实战格式，LightRAG 复盘确认）
+        r"\*\*(?:洞察|Insight)\s*\d+\*\*",
     ]
     for pattern in principle_patterns:
         matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
@@ -395,6 +454,8 @@ def check_distillation_sections(content: str) -> dict:
         r"陷阱\s*\d+[:：]",  # Match "陷阱 1:" or "陷阱 1："
         r">\s*\*\*陷阱\*\*[:：]",  # Match "> **陷阱**:" format (unnumbered)
         r"^\d+\.\s*\*\*[^*]+\*\*[:：]",  # Match "1. **标题**:" format (numbered list with bold title)
+        r"###\s*(?:陷阱|Gotcha)\s*\d+",  # Match "### 陷阱 1:"（实战格式）
+        r"\*\*(?:陷阱|Gotcha)\s*\d+\*\*",
     ]
     for pattern in gotcha_count_patterns:
         matches = re.findall(pattern, content, re.IGNORECASE | re.MULTILINE)
@@ -411,16 +472,18 @@ def check_distillation_sections(content: str) -> dict:
             result["has_name_removal_test"] = True
             break
     
-    # 生成问题列表
+    # 生成问题列表（阈值按文档厚度分档：厚文档要求更高——实战确认浅模块 1 条洞察也通过的问题）
+    # 分档：<80 行=薄(1条)；80-150 行=中(2条)；≥150 行=厚(3条)
+    min_required = 1 if line_count < 80 else (2 if line_count < 150 else 3)
     if not result["has_insights"]:
         result["issues"].append("缺少💡设计洞察章节")
-    elif result["insight_count"] < 2:
-        result["issues"].append(f"设计洞察原则数量不足（{result['insight_count']} < 2）")
+    elif result["insight_count"] < min_required:
+        result["issues"].append(f"设计洞察数量不足（{result['insight_count']} < {min_required}，{line_count} 行文档按分档要求 {min_required} 条）")
     
     if not result["has_gotchas"]:
         result["issues"].append("缺少⚠️隐含陷阱章节")
-    elif result["gotcha_count"] < 2:
-        result["issues"].append(f"隐含陷阱数量不足（{result['gotcha_count']} < 2）")
+    elif result["gotcha_count"] < min_required:
+        result["issues"].append(f"隐含陷阱数量不足（{result['gotcha_count']} < {min_required}，{line_count} 行文档按分档要求 {min_required} 条）")
     
     if not result["has_name_removal_test"]:
         result["issues"].append("缺少去名检验说明")

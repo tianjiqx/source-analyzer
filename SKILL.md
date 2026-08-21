@@ -291,6 +291,7 @@ output-dir/
 ├── 00-project-level/                 # Layer 1: 项目级
 │   ├── README.md                     # 项目概览
 │   ├── architecture.md               # 架构设计
+│   ├── data-flow.md                  # ⭐ 跨模块数据流（端到端管线，见下方说明）
 │   ├── dependencies.md               # ⭐ 项目依赖分析（发现优秀第三方库）
 │   ├── quality-score.md              # 质量评分
 │   └── learning-value.md             # 学习价值
@@ -301,10 +302,21 @@ output-dir/
 │       └── dependencies.md
 ├── 20-file-level/                    # Layer 3: 文件粒度
 │   └── <file>-analysis.md
+├── 30-specialized/                   # 专项维度（按检测类型，见"⛔ 专项类型必须转化为 PLAN 任务"）
+│   └── <type>/
 └── 40-learning/                      # 🎓 费曼学习卡片（**必产**，分析闭环的标准环节）
     ├── INDEX.md                      # 学习卡片索引
     └── LEARN_XX_<CONCEPT>.md         # 教学卡片（讲解/核心问题/要点总结/常见误解，全自动生成）
 ```
+
+**⭐ data-flow.md（跨模块数据流文档）**：模块文档天然按目录切分，**端到端数据流恰好落在所有模块文档的盲区**（实战确认：LightRAG 的 insert 管线"文档→chunk→实体抽取→合并→落盘"横跨 4 个模块，无任何单模块文档完整呈现）。因此项目级必产 `data-flow.md`：以项目 1-3 条核心业务流为主线，逐步标注数据形态变化 + 经过的模块/文件（file:line），配 mermaid sequenceDiagram/flowchart。它在 Phase 3（总结阶段）生成——此时所有模块文档已就绪，主 agent 把各模块文档路径注入派发 context，由子代理整合产出。
+
+**⭐ 文件级选点规则（Layer 3 覆盖断层防护）**：实战确认"关键文件"无明确标准时只覆盖了 3 个文件，而 utils.py（3352 行）等被学习卡片反复引用的文件反而没分析。文件级选点 = 以下并集：
+1. 行数 Top-N（按项目规模 N=3~8，超大文件 >3000 行强制入选）
+2. 入口文件（main/CLI/server 启动）
+3. 被 learning-value.md（或模块 💡洞察）标注为"核心机制载体"的文件
+4. 非测试、非生成代码
+选点结果在 PLAN.md 中登记并说明理由，verify 时对照实际产出。
 
 ---
 
@@ -609,6 +621,18 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 **跨类型关联**: 注意不同类型特征之间的交叉点（如数据库项目中的 AI 查询优化器、Skill 项目中的 Agent 记忆系统）。
 
 **自动检测**: `python3 scripts/detect-project-type.py /path/to/project --recommend-templates`
+
+### ⛔ 专项类型必须转化为 PLAN 任务（防"检测了却没用上"）
+
+**实战教训（2026-08 LightRAG）**：detect-project-type.py 正确识别了 llm-agent 类型（置信度 390 分、12 个专项模板），但模块清单仍只按目录结构切分，专项维度一个都没进 PLAN——检索/上下文工程、缓存系统等最值得写的维度全部缺失，类型检测沦为装饰。
+
+**规则**：类型检测结果**必须**影响 PLAN 的任务分解，而不只是决定输出目录名：
+
+1. **PLAN 必含专项维度任务**：主类型（置信度 > 10）的专项模板中，至少选取 **3 个最匹配项目特征**的维度，作为独立 `[DISPATCH]` 任务进入 `30-specialized/<type>/`（派发同样六段式）。选取依据：模板维度与项目实际机制的交集（如 RAG 项目选 retrieval/上下文工程 + 缓存 + 管线编排，而非机械取前 3 个模板）。
+2. **专项任务在模块任务之后、总结之前执行**：模块级分析产出的 💡洞察 是专项任务的重要输入——派发专项任务的 context 段注入相关模块文档路径。
+3. **次要类型**（得分 > 主类型 50%）至少选 1 个维度。
+4. **verify 联动**：PLAN 中登记的专项文档缺失时，verify-analysis 报 missing（见"验证"节）。
+5. 若类型置信度 ≤ 10 或所有维度与项目实际均不匹配（罕见），须在 PLAN.md 中**写明理由**后才可跳过——静默跳过不允许。
 
 ---
 
