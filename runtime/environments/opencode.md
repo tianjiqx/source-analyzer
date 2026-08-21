@@ -75,7 +75,6 @@ python3 scripts/resilient-runner.py --output-dir output-dir --serial
 
 ---
 
-*创建时间: 2026-07-21*
 
 ---
 

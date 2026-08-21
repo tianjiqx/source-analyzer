@@ -399,5 +399,4 @@ CacheManager 使用了 LRU 算法，最大容量 1000 条。
 ---
 
 *模板版本: v1.0*
-*创建时间: 2026-06-29*
 *灵感来源: Agentic Harness Patterns Skill 的 PCA 式蒸馏方法论*
