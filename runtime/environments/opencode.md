@@ -76,3 +76,33 @@ python3 scripts/resilient-runner.py --output-dir output-dir --serial
 ---
 
 *创建时间: 2026-07-21*
+
+---
+
+## Goal 持久化（goal-tracker.py）
+
+本环境的 goal 机制由 `$SKILL_DIR/scripts/goal-tracker.py` 提供，状态写入 `$WORKSPACE/active-goals.json`（可用环境变量 `SOURCE_ANALYZER_GOALS_FILE` 覆盖）：
+
+```bash
+# 执行前：注册 Goal（必做）
+python3 $SKILL_DIR/scripts/goal-tracker.py register \
+  --objective "深度分析 <项目名>" \
+  --project "<项目名>" \
+  --output-dir "$OUTPUT_BASE/<name>" \
+  --mode "recursive_deep" \
+  --total-tasks <N> \
+  --plan-file "$OUTPUT_BASE/<name>/PLAN.md"
+
+# 执行中：每批次后同步进度
+python3 $SKILL_DIR/scripts/goal-tracker.py update \
+  --goal-id "<goal-id>" --phase "Phase 2 (批次 2/5)" --completed 15
+
+# 执行后：标记完成
+python3 $SKILL_DIR/scripts/goal-tracker.py complete --goal-id "<goal-id>"
+
+# 会话恢复：检查未完成任务（心跳/定时触发时）
+python3 $SKILL_DIR/scripts/goal-tracker.py check
+
+# 查看任务列表
+python3 $SKILL_DIR/scripts/goal-tracker.py list
+```

@@ -323,7 +323,23 @@ python3 scripts/orchestrator.py RESEARCH_PLAN.md --only-missing
 
 ---
 
-## 5. 执行闭环检查清单
+## 5. 可选环境钩子（B 组）
+
+由适配层能力矩阵声明（见 `runtime/adapter.md`）；不支持则显式跳过并在 VERSION.md 记录"已跳过及原因"，禁止假装完成：
+
+| 钩子 | 能力接口 | 用途 | 跳过时记录位置 |
+|------|----------|------|---------------|
+| 记忆回写 | `memory.write` | 长期记忆（OpenClaw：`$WORKSPACE/MEMORY.md`；DSH：memory 工具 target=project，可选） | VERSION.md |
+| 对比数据库 | `db.update` | 更新 `$SKILL_DIR/references/project-comparison-db.md` | VERSION.md |
+| 定时恢复 | `schedule.recurring` | 断点自动恢复（OpenClaw cron / 系统 crontab） | VERSION.md |
+| 会话检查 | `progress.check` | 会话开始时检查未完成任务 | — |
+| 完成通知 | `notify.silent` | 完成/异常通知用户 | — |
+
+**执行规则**：先查能力矩阵确认支持 → 支持则按对应环境实现执行 → 不支持则跳过并记录 → 禁止写无消费者消费的文件（假闭环）。
+
+---
+
+## 6. 执行闭环检查清单
 
 分析完成后，逐项确认：
 
