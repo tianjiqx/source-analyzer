@@ -301,7 +301,7 @@ output-dir/
 │       └── dependencies.md
 ├── 20-file-level/                    # Layer 3: 文件粒度
 │   └── <file>-analysis.md
-└── 40-learning/                      # 🎓 费曼学习卡片（可选，用户要求时生成）
+└── 40-learning/                      # 🎓 费曼学习卡片（**必产**，分析闭环的标准环节）
     ├── INDEX.md                      # 学习卡片索引
     └── LEARN_XX_<CONCEPT>.md         # 教学卡片（讲解/核心问题/要点总结/常见误解，全自动生成）
 ```
@@ -862,7 +862,7 @@ python3 scripts/verify-analysis.py <output-dir> --recursive
 7. **📌 标记完成** — 分析完成后标记 goal 完成
    （OpenClaw/CLI：`goal-tracker.py complete`；**DSH：`update_goal action=complete`**）
 8. **🔗 记录 Commit** — 分析完成后运行 `commit-tracker.py record` 记录当前 commit，确保后续可增量分析
-9. **🎓 生成学习文档（可选）** — 如果用户要求，或分析模式为"最大化"或"递归深度"，自动从分析文档中提炼关键知识点，生成费曼学习文档。详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)
+9. **🎓 生成学习文档（必做）** — 分析闭环的标准环节（非可选）：验证通过后自动从分析文档中提炼关键知识点（P0 设计洞察 → P1 隐含陷阱 → P2 架构模式），用费曼四步法生成学习卡片到 `output-dir/40-learning/`。知识点的选取素材已内含于各模块"💡设计洞察/⚠️隐含陷阱"章节——这也是每文档必备这两节的原因之一。仅当用户明确说"不要学习文档"时才跳过。详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)
 
 ### 环境适配约定
 
@@ -1093,9 +1093,11 @@ python3 $SKILL_DIR/scripts/commit-tracker.py info /path/to/project
 - **递归深度模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --recursive`
 - **标准 / 最大化模式**：`python3 $SKILL_DIR/scripts/verify-analysis.py [analysis-dir] --all`
 
-### A4. 🎓 生成学习文档（可选，用户要求时执行）
+### A4. 🎓 生成学习文档（必做，分析闭环标准环节）
 
-如果用户要求，或分析模式为"最大化"或"递归深度"，自动从分析文档中提炼关键知识点，生成费曼学习文档。
+验证通过后，自动从分析文档中提炼关键知识点（P0 设计洞察 → P1 隐含陷阱 → P2 架构模式），用费曼四步法生成学习卡片。**所有分析模式均执行**；仅当用户明确说"不要学习文档"时跳过。
+
+派发要求：学习卡片批同样走六段式派发（DSH 环境 ≥2 张时用 workflow 工具的 `tasks` 数组）。
 
 详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)。
 
