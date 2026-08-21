@@ -166,6 +166,37 @@
 
 ## 3. 增量更新机制
 
+## 3. 增量更新机制
+
+### Commit 追踪命令（分析前后必做）
+
+分析开始时记录当前 commit，后续可检测变更并针对性增量分析：
+
+```bash
+# 记录当前 commit 到 project-meta.json + commit-history.json
+python3 $SKILL_DIR/scripts/commit-tracker.py record /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name \
+  --analysis-mode recursive_deep
+
+# 会话恢复时检查是否有新提交（退出码 2 = 检测到更新）
+python3 $SKILL_DIR/scripts/commit-tracker.py status /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name
+
+# 查看详细变更（JSON 输出供消费）
+python3 $SKILL_DIR/scripts/commit-tracker.py diff /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name --show-stat
+python3 $SKILL_DIR/scripts/commit-tracker.py diff /path/to/project \
+  --output-dir $OUTPUT_BASE/project-name --json
+
+# 查看分析历史
+python3 $SKILL_DIR/scripts/commit-tracker.py history \
+  --output-dir $OUTPUT_BASE/project-name
+```
+
+**增量范围判定**：无变更 → 不分析；微小变更（<5 文件）→ 重分析变更文件（Layer 3）；中等变更（5-20 文件）→ 重分析受影响模块（Layer 1+3）；大范围变更（>20 文件）→ 递归重分析受影响模块 + 跨模块总结；架构级变更 → 重新执行完整分析（新版本号）。
+
+**增量分析完整闭环**：`status`（检测变更）→ `diff`（确定范围）→ 对变更模块执行分析 → `record`（更新记录）→ 更新 VERSION.md。
+
 ### 版本追踪
 
 在分析目录中维护 `VERSION.md`：

@@ -4,6 +4,38 @@
 
 ---
 
+# 源码分析工作流指南
+
+> **设计目标**: 提供系统化的源码分析流程，确保分析全面、深入、可重复。
+
+---
+
+## 自动化流程（推荐，快速开始）
+
+```bash
+# Step 0: 下载项目（如尚未下载，项目统一放 $WORKSPACE/opensource/）
+gh repo clone <owner>/<repo> -- --depth=1
+cd $WORKSPACE/opensource
+
+# Step 1: 智能分析（自动检测项目类型 + 推荐模板；必须传 --model 记录当前模型名）
+python3 $SKILL_DIR/scripts/smart-analyze.py /path/to/project \
+  --model "$(cat $WORKSPACE/.current-model 2>/dev/null || echo 'unknown')" \
+  -o $OUTPUT_BASE/project-name
+
+# Step 2: 生成研究计划
+python3 $SKILL_DIR/scripts/generate-research-plan.py /path/to/project \
+  --depth file-level --max-files 30 \
+  -o $OUTPUT_BASE/project-name/RESEARCH_PLAN.md
+
+# Step 3: 按 RESEARCH_PLAN.md 派发执行（[DISPATCH] 六段式，见 SKILL.md）
+# Step 4: 验证结果
+python3 $SKILL_DIR/scripts/verify-analysis.py $OUTPUT_BASE/project-name --all
+```
+
+> 递归深度分析（大型项目）自动流程见 [RECURSIVE_DEEP_ANALYSIS.md](RECURSIVE_DEEP_ANALYSIS.md) 的"并行执行策略"节。
+
+---
+
 ## 分析流程概览
 
 ```
