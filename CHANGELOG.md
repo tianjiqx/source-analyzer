@@ -8,9 +8,8 @@
 
 ### 🔑 关键变更
 
-1. **迁出 DSH 环境适配**：`runtime/environments/dsh.md` → `dsh-source-analyzer/docs/dsh-environment.md`
-2. **迁出 DSH workflow 编排**：`scripts/analysis-workflow.js` → `dsh-source-analyzer/scripts/analysis-workflow.js`
-3. **skill 仓库职责收窄**：仅保留方法论（SKILL.md）+ 通用验证脚本（evidence-check.py / verify-analysis.py / lint-skill.py）+ guides/templates/references
+1. **迁出 DSH workflow 编排**：`scripts/analysis-workflow.js` → `dsh-source-analyzer/preset/analysis-workflow.js`（随预设分发，注入 system prompt）
+2. **skill 仓库职责收窄**：仅保留方法论（SKILL.md）+ 通用验证脚本（evidence-check.py / verify-analysis.py / lint-skill.py）+ guides/templates/references + 环境适配说明（runtime/environments/）
 
 ### 📝 分仓理由
 
