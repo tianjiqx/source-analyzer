@@ -9,11 +9,11 @@
 
 | 维度 | DSH 实况 |
 |------|---------|
-| 派发机制 | `subagent` 工具（后台默认，返回 durable id）；批内结构化派发可用 `workflow` 工具（DSH 专属仓库 `dsh-source-analyzer/scripts/analysis-workflow.js`，纯内存编排） |
+| 派发机制 | `subagent` 工具（后台默认，返回 durable id）；批内结构化派发可用 `workflow` 工具（DSH 预设 `dsh-source-analyzer/preset/analysis-workflow.js`，随预设分发，注入 system prompt） |
 | 等待机制 | 子代理完成通知（禁止空轮询；阻塞时用 `job_output(wait=true)` 或依赖通知） |
 | 进度持久化 | **原生 goal 工具**（`create_goal`/`update_goal`/`get_goal`），自动延续轮次即断点恢复 |
 | 并行上限 | 建议 12-20（实测峰值 20 稳定；workflow 引擎实测并发 12/20 全放行，2026-08 探针验证） |
-| workflow schema 门 | ⚠️ **实测不可靠**（拒绝 JSON/多余字段/缺 required 均被放行，2026-08 严格探针）——结构校验必须在 workflow JS 脚本内代码级实现（`dsh-source-analyzer/scripts/analysis-workflow.js` 的 validateReport） |
+| workflow schema 门 | ⚠️ **实测不可靠**（拒绝 JSON/多余字段/缺 required 均被放行，2026-08 严格探针）——结构校验必须在 workflow JS 脚本内代码级实现（`dsh-source-analyzer/preset/analysis-workflow.js` 的 validateReport） |
 | 文件系统 | 仅会话工作区可写（如 `/mnt/disk2/dsh-ws`）；`$SKILL_DIR`、home 等多为只读挂载 |
 | 恢复机制 | goal 自动延续轮 + 输出目录（PLAN/checkpoint/active-goals.json） |
 
