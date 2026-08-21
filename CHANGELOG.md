@@ -1,5 +1,38 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-08-21 - 📦 分仓 - DSH 专属内容迁至 dsh-source-analyzer
+
+### 🎯 概述
+
+依据 SOURCE_ANALYZER_DSH_PLAN.md v1.4 §8.4 分仓策略，将 DSH 专属交付物迁至独立仓库 [dsh-source-analyzer](https://github.com/tianjiqx/dsh-source-analyzer)，skill 仓库保持纯环境无关。
+
+### 🔑 关键变更
+
+1. **迁出 DSH 环境适配**：`runtime/environments/dsh.md` → `dsh-source-analyzer/docs/dsh-environment.md`
+2. **迁出 DSH workflow 编排**：`scripts/analysis-workflow.js` → `dsh-source-analyzer/scripts/analysis-workflow.js`
+3. **skill 仓库职责收窄**：仅保留方法论（SKILL.md）+ 通用验证脚本（evidence-check.py / verify-analysis.py / lint-skill.py）+ guides/templates/references
+
+### 📝 分仓理由
+
+- **受众边界**：skill 服务多环境（OpenClaw / opencode / DSH / 纯 CLI），preset/workflow 仅 DSH
+- **npm 打包独立可控**：DSH 专属内容独立发布
+- **版本钉住比 monorepo 隐性漂移更安全**：dsh-source-analyzer 显式引用 skill 仓库版本
+- **与 dsh-ssh / task-board 的 packages 独立维护惯例一致**
+
+### 🔗 版本钉住
+
+dsh-source-analyzer 当前钉住本仓库：
+- 版本：**v1.4**
+- commit：**`2ab56d8`** (feat: evidence-check 支持 --filelist 白名单消歧)
+
+### ✅ 迁移验证
+
+- 预设已安装到 `~/.dsh/.agent-presets/source-analyzer/`
+- 新会话可选择「Source Analyzer 模式」预设
+- skill 仓库 lint 通过（环境无关内容未受影响）
+
+---
+
 ## 2026-08-15 - 🔬 质量四杠杆落地（v1.3 方案第⓪①②③批）
 
 ### 🎯 概述
