@@ -231,21 +231,13 @@ module-c/
 
 ### 执行顺序
 
-```
-Phase 1: 项目级扫描 (串行, 10-20 min)
-    ↓
-Phase 2: 模块级递归 (分批并行, 每模块 30-60 min)
-    ├── 批次 1: 高优先级模块 (importance=high)
-    │   ├── [DISPATCH]: module-a
-    │   ├── [DISPATCH]: module-b
-    │   └── ... (最多 max-parallel 个)
-    ├── [WAIT]: 等待批次 1 完成
-    ├── 批次 2: 中优先级模块
-    │   └── ...
-    └── [WAIT]: 等待所有批次完成
-    ↓
-Phase 3: 项目级总结+架构再综合 (串行, 30-50 min)
-```
+- **Phase 1: 项目级扫描**（串行, 10-20 min）
+- **Phase 2: 模块级递归**（分批并行, 每模块 30-60 min）
+  1. 批次 1: 高优先级模块 (importance=high) — `[DISPATCH]: module-a/b/...`（≤ max-parallel 个）
+  2. `[WAIT]: 等待批次 1 完成`
+  3. 批次 2: 中优先级模块 — `[DISPATCH]`...
+  4. `[WAIT]: 等待所有批次完成`
+- **Phase 3: 项目级总结+架构再综合**（串行, 30-50 min）
 
 ### 生成分批计划
 
@@ -399,5 +391,3 @@ victoriametrics/
 7. **重要性评估**: 关注高重要性小型模块（如 encoding），它们通常是核心逻辑
 
 ---
-
-*最后更新: 2026-07-02 22:10*

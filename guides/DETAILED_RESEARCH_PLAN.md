@@ -888,5 +888,3 @@ python3 generate-research-plan.py \
 - Output: 20-ObSchemaService.cpp-analysis.md
 
 ---
-
-*最后更新: 2026-06-27*

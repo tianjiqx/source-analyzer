@@ -267,5 +267,3 @@ python3 scripts/mermaid-validator.py output-dir/ --recursive -o output-dir/MERMA
 | Pipeline | 管道阶段图 (flowchart LR) + 状态流转图 (stateDiagram) |
 
 ---
-
-*最后更新: 2026-06-27*

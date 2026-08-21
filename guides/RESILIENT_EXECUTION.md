@@ -11,17 +11,7 @@
 ### 失败场景
 
 ```
-主 Agent 派发 8 个并行子任务
-    ├── 子任务-1 ✅ 完成
-    ├── 子任务-2 ✅ 完成
-    ├── 子任务-3 ❌ rate_limit 错误
-    ├── 子任务-4 ❌ rate_limit 错误
-    ├── 子任务-5 ✅ 完成
-    ├── 子任务-6 ❌ context overflow
-    ├── 子任务-7 ✅ 完成
-    └── 子任务-8 ❌ timeout
-
-结果：4 个失败，主 Agent 不知道怎么重试 → 分析不完整
+主 Agent 派发 8 个并行子任务，其中 4 个失败（rate_limit ×2 / context overflow / timeout），主 Agent 不知道如何重试 → 分析不完整。
 ```
 
 ### 根本原因
@@ -36,23 +26,11 @@
 ## 三层防线架构
 
 ```
-Layer 1: 任务级重试 (子任务内部)
-├── 每个子任务内部捕获 rate_limit
-├── 自主等待 + 重试（最多 3 次）
-└── 失败则在 .task-report.json 标记 status=failed
+**Layer 1: 任务级重试（子任务内部）**：每个子任务捕获 rate_limit → 自主等待 + 重试（最多 3 次）→ 失败则在 .task-report.json 标记 status=failed。
 
-Layer 2: 批次级恢复 (--auto-resume)
-├── resilient-runner.py --auto-resume 检测失败任务
-├── 生成环境无关的 [DISPATCH] 重试指令
-├── 指数退避重试，每任务最多 5 次
-├── 持久化状态到 .resilient-checkpoint.json
-└── 不需要主 agent 上下文参与
+**Layer 2: 批次级恢复（--auto-resume）**：`resilient-runner.py --auto-resume` 检测失败任务 → 生成环境无关的 [DISPATCH] 重试指令 → 指数退避每任务最多 5 次 → 持久化到 .resilient-checkpoint.json（不需要主 agent 上下文参与）。
 
-Layer 3: 全局续传 (定时自动恢复)
-├── 如环境支持，定时触发独立 session
-├── Session 运行 resilient-runner.py --continue
-├── 生成 continuation prompt 让恢复 session 自主执行
-└── 全部完成后移除定时任务
+**Layer 3: 全局续传（定时自动恢复）**：环境支持时定时触发独立 session → 运行 `resilient-runner.py --continue` → 生成 continuation prompt 让恢复 session 自主执行 → 全部完成后移除定时任务。
 ```
 
 ### 环境差异
@@ -285,10 +263,7 @@ cron(action=add, job={
 超过 5 次重试后，自动降级：
 
 ```
-重试 5 次失败
-    ├── Layer 3 文件分析 → 跳过（不影响整体）
-    ├── Layer 2 模块分析 → 简化分析（只做概览）
-    └── Layer 1 项目分析 → 通知用户（必须手动处理）
+重试 5 次仍失败的降级策略：Layer 3 文件分析 → 跳过（不影响整体）；Layer 2 模块分析 → 简化分析（只做概览）；Layer 1 项目分析 → 通知用户（必须手动处理）。
 ```
 
 ---
@@ -383,5 +358,3 @@ A: 编辑 `.resilient-checkpoint.json`，将任务的 status 改为 "pending"，
 ```
 
 ---
-
-*最后更新: 2026-07-21*

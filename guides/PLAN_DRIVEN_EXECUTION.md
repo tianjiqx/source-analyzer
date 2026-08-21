@@ -74,17 +74,14 @@
 
 分析完成后，运行 `plan-vs-actual` 检查：
 
-```
-PLAN.md 预期输出          vs          实际生成
-├── lib/storage/                      ├── lib/storage/
-│   ├── INDEX.md     ✅               │   ├── INDEX.md
-│   ├── 00-overview/ (4 files)        │   ├── 00-overview/ (4 files) ✅
-│   └── 20-file-level/ (8 files)      │   └── 20-file-level/ (6 files) ⚠️ 少 2 个
-├── lib/encoding/                     ├── lib/encoding/
-│   ├── INDEX.md     ✅               │   ├── INDEX.md
-│   └── 00-overview/ (4 files)        │   └── 00-overview/ (3 files) ⚠️ 少 1 个
-└── ...
-```
+| 预期（PLAN.md） | 实际生成 | 判定 |
+|----------------|---------|------|
+| lib/storage/INDEX.md | lib/storage/INDEX.md | ✅ |
+| lib/storage/00-overview/ (4 files) | lib/storage/00-overview/ (4 files) | ✅ |
+| lib/storage/20-file-level/ (8 files) | lib/storage/20-file-level/ (6 files) | ⚠️ 少 2 个 |
+| lib/encoding/INDEX.md | lib/encoding/INDEX.md | ✅ |
+| lib/encoding/00-overview/ (4 files) | lib/encoding/00-overview/ (3 files) | ⚠️ 少 1 个 |
+| ... | ... | ... |
 
 ---
 
@@ -401,5 +398,3 @@ PLAN.md 不只是执行计划，还是验收标准。每个任务必须有明确
 5. **补救缺失** — 对计划验收中发现缺失的文档，补充分析
 
 ---
-
-*最后更新: 2026-07-02*

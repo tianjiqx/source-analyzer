@@ -335,5 +335,3 @@ python3 scripts/orchestrator.py RESEARCH_PLAN.md --only-missing
 - [ ] **检查点已清理**：删除 `.checkpoint.json`（如果存在）
 
 ---
-
-*最后更新: 2026-06-30*
