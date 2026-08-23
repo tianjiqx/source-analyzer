@@ -236,6 +236,150 @@ python3 scripts/mermaid-validator.py output-dir/ --recursive -o output-dir/MERMA
 
 **集成到验证流程**: 在 `verify-analysis.py --all` 和 `plan-tracker.py verify` 之后运行。
 
+## 第二类：原理讲解型图表（回答"为什么"）
+
+> 结构图（第一类）回答"系统长什么样"；讲解型图回答学习者真正的问题：**为什么这样设计、没有它会怎样、如何演进而来**。
+> 💡设计洞察章节至少 1 条洞察必须配讲解型图（对比/权衡/演进三选一）；费曼学习卡片每张至少 1 张讲解型图。
+
+### 9. 对比图（有 vs 无某机制）
+
+双列 subgraph 并排展示：左列无该机制的朴素实现，右列有该机制的实现，用虚线箭头标注关键差异点。
+
+```mermaid
+flowchart LR
+    subgraph WITHOUT["❌ 无合并步骤：直接落库"
+        A1["chunk 后直接写入"] --> A2["实体各自独立"] --> A3["查询召回碎片化<br/>同义实体重复出现"]
+    end
+    subgraph WITH["✅ 有实体合并"
+        B1["chunk 后实体抽取"] --> B2["合并同义实体"] --> B3["查询召回集中<br/>图结构连通"]
+    end
+    WITHOUT -.->|"合并步骤消除的缺陷"| WITH
+```
+
+### 10. 权衡象限图（quadrantChart）
+
+展示方案在权衡空间中的位置，说明"为什么选它"。
+
+```mermaid
+quadrantChart
+    title 检索方案权衡：召回率 vs 成本
+    axis-low "低召回" --> axis-high "高召回"
+    axis-low "低成本" --> axis-high "高成本"
+    quadrant-1 "高价值区"
+    quadrant-2 "需论证"
+    quadrant-3 "不推荐"
+    quadrant-4 "高性价比"
+    "纯向量检索": [0.35, 0.3]
+    "纯关键词检索": [0.4, 0.25]
+    "混合检索(hybrid)": [0.78, 0.6]
+    "多路召回+rerank": [0.9, 0.85]
+```
+
+### 11. 演进时间线（timeline）
+
+展示机制如何逐步解决上一版的缺陷——学习迁移的关键：知道每一步解决什么问题，才知道何时适用。
+
+```mermaid
+timeline
+    title 查询模式演进
+    naive : 直接 chunk 检索<br/>（无法回答全局问题）
+    local : 实体邻域检索<br/>（解决局部精准）
+    global : 社区摘要检索<br/>（解决全局理解）
+    hybrid : local+global 融合<br/>（解决单一模式偏科）
+```
+
+### 12. 失败路径标注（stateDiagram + 红色分支）
+
+正常流程之外，必须画出失败/降级路径（红色），说明"没有 X 会怎样"。
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Normal: 正常请求
+    Normal --> Retrying: 下游超时
+    Retrying --> Normal: 重试成功
+    Retrying --> Degraded: 重试耗尽 --> 降级
+    Degraded --> [*]: 返回兜底结果
+    Normal --> [*]: 成功
+
+    Degraded: ⚠️ 降级：读旧快照
+    note right of Degraded : 降级期间写入被拒<br/>防止脑裂
+```
+
+### 13. 决策点标注（sequenceDiagram + Note）
+
+在关键调用旁用 Note 标注设计决策的"为什么"。
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant W as Writer
+    participant M as Merger
+    C->>W: insert(document)
+    Note over W: 决策：先写 WAL 再抽取<br/>（抽取失败不丢数据）
+    W->>W: chunk + 实体抽取
+    W->>M: 提交合并
+    Note over M: 决策：串行合并<br/>（避免并发写竞态）
+    M-->>W: 合并完成
+    W-->>C: 确认
+```
+
+---
+
+## 第三类：空间布局图（回答"数据长什么样"）
+
+> mermaid 是拓扑图工具，**无法表达空间关系**（字节流方向、定长/变长、偏移、指针指向）。
+> 凡涉及物理存储/文件格式/内存布局/页结构/消息格式/序列化格式，必须用 **ASCII 字节布局图**，四要素缺一不可：
+
+| 要素 | 说明 | 标注方式 |
+|------|------|----------|
+| **方向** | 字节流从头到尾 | 图顶底框线 + 起止偏移（0x00 / EOF） |
+| **尺寸** | 定长/变长/对齐 | 区域旁标注（48B 固定 / varint 变长 / 8B 对齐） |
+| **偏移** | 每区域起始位置 | 左侧 offset 列（0x00、offset 处） |
+| **指针** | 引用关系 | 箭头（handle → offset） |
+
+### 14. ASCII 字节布局图范式
+
+以 LevelDB SSTable 为例（文件末 8B 为 magic number，Footer 内两个 BlockHandle 指回数据区）：
+
+```
+SSTable 文件逻辑布局（纵向=字节流方向，非比例）
+┌─────────────────────────────┐ 0x00
+│ Data Block 0                │ 变长（重启点数组在块尾）
+├─────────────────────────────┤
+│ ...                         │
+├─────────────────────────────┤
+│ Data Block N                │ 变长
+├─────────────────────────────┤
+│ Meta Block (filter)         │ 变长
+├─────────────────────────────┤ ← metaindex_handle.offset
+│ Metaindex Block             │ 变长
+├─────────────────────────────┤ ← index_handle.offset
+│ Index Block                 │ 变长（每条目一个 BlockHandle）
+├─────────────────────────────┤
+│ Footer (48B, 固定)          │ metaindex_handle + index_handle + padding + magic
+└─────────────────────────────┘ EOF-8 ← magic=0xdb4775248b80fb57（最后 8B）
+        ▲
+        └── Footer.index_handle {offset:varint, size:varint} 指回 Index Block 起点
+            Footer.metaindex_handle 同理指回 Metaindex Block
+说明：读 SSTable 时先读末 48B Footer → 两个 handle 定位索引区 → 索引区的
+BlockHandle 数组定位任意 Data Block —— 一次 lseek + 顺序读即可二分查找。
+```
+
+### 15. 简版：mermaid 纵向堆叠（仅表达组成顺序，不标偏移时可用）
+
+```mermaid
+flowchart TB
+    F["Footer (48B 固定)<br/><i>table/format.cc</i>"] --> I["Index Block"]
+    I --> MX["Metaindex Block"]
+    MX --> MB["Meta Block (filter)"]
+    MB --> D["Data Block 0..N"]
+```
+
+> ⚠️ mermaid 堆叠只能表达"组成与顺序"。凡能写出具体偏移/定长的，一律升级为 ASCII 字节图（范式见上）。
+
+---
+
 ## 在不同模板中的应用
 
 ### 项目级分析 (00-README.md)

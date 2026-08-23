@@ -123,6 +123,18 @@ def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_pat
 
 每个文档至少包含 1 个 Mermaid 图表。
 
+=== 图表类型要求（学习视角）===
+1. 结构图（flowchart/sequence）只回答"是什么"；每个文档还需视内容选用"讲解型图"回答"为什么"：
+   - 对比图（双列 subgraph：有此机制 vs 无此机制）
+   - 权衡图（quadrantChart：方案在权衡空间中的位置）
+   - 演进图（timeline：机制如何逐步解决上一版缺陷）
+   - 失败路径（stateDiagram + 红色分支标注降级行为）
+   - 决策点标注（sequenceDiagram 的 Note over）
+2. 涉及物理存储/文件格式/内存布局/页结构时，必须画 **ASCII 字节布局图**（mermaid 无法表达空间关系）：
+   方向（字节流从头到尾）+ 尺寸（定长/变长标注）+ 偏移（offset/0x）+ 指针引用（handle → offset）四要素。
+   格式见 guides/DIAGRAM_GENERATION_GUIDE.md 空间布局图章节。
+3. 💡设计洞察章节至少 1 条洞察配讲解型图（对比/权衡/演进三选一）。
+
 === 必备蒸馏章节（每个分析文档末尾必须有）===
 1. `## 💡 设计洞察`：至少 2 条可移植原则，每条含【原理】【证据(file:line)】【去名检验】
 2. `## ⚠️ 隐含陷阱`：至少 2 条非显而易见陷阱，每条含【现象】【原因】【正确做法】
@@ -225,10 +237,11 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
   - {output_dir}/00-project-level/architecture.md
   - {output_dir}/00-project-level/quality-score.md
   - {output_dir}/00-project-level/learning-value.md
-- 完成条件: 4 个文件全部存在，无 placeholder
+  - {output_dir}/00-project-level/Glossary.md
+- 完成条件: 5 个文件全部存在，无 placeholder；Glossary.md 含 ≥3 条术语（核心概念 → 统一术语 → 英文原名）
 
 ```
-[DISPATCH: task="项目级分析: 概览、架构、质量评分、学习价值" label="project-level"]
+[DISPATCH: task="项目级分析: 概览、架构、质量评分、学习价值 + Glossary 术语表（后续所有模块强制复用）" label="project-level"]
 ```
 
 ---
@@ -285,10 +298,11 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
   - {output_dir}/20-cross-module/patterns.md
   - {output_dir}/20-cross-module/recommendations.md
   - {output_dir}/20-cross-module/dependency-graph.md
-- 完成条件: 5 个文件全部存在
+  - {output_dir}/20-cross-module/data-flow.md
+- 完成条件: 6 个文件全部存在
 
 ```
-[DISPATCH: task="整合所有模块分析，生成跨模块报告" label="project-summary"]
+[DISPATCH: task="整合所有模块分析，生成跨模块报告 + data-flow.md（以项目 1-3 条核心业务流为主线，逐步标注数据形态变化 + 经过的模块/文件 file:line，配 mermaid sequenceDiagram；此文档是模块文档盲区的唯一补偿，缺失 verify 报 missing）" label="project-summary"]
 ```
 
 ---

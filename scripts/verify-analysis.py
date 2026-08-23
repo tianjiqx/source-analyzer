@@ -35,13 +35,6 @@ REQUIRED_FILES = {
         "min_tables": 1,
         "alt_paths": ["00-project-level/architecture.md"],
     },
-    "02-core-code.md": {
-        "sections": ["类", "文件", "方法", "模式", "代码", "入口"],
-        "forbidden": ["TBD", "TODO", "待补充"],
-        "min_tables": 2,
-        "min_code_blocks": 2,
-        "alt_paths": ["00-project-level/core-code.md"],
-    },
     "03-quality-score.md": {
         "sections": ["评分", "质量", "安全", "测试", "建议", "改进"],
         "forbidden": ["TBD", "TODO", "待补充", "评分 TBD"],
@@ -59,6 +52,12 @@ REQUIRED_FILES = {
         "forbidden": ["TBD", "TODO", "待补充"],
         "min_tables": 1,
         "alt_paths": ["00-project-level/dependencies.md"],
+    },
+    "data-flow.md": {
+        "sections": ["数据流", "核心", "模块", "mermaid"],
+        "forbidden": ["TBD", "TODO", "待补充"],
+        "min_tables": 0,
+        "alt_paths": ["00-project-level/data-flow.md", "20-cross-module/data-flow.md"],
     },
     "INDEX.md": {
         "sections": ["导航", "索引", "概览"],
@@ -226,6 +225,83 @@ def check_index_consistency(analysis_dir: Path) -> dict:
     return result
 
 
+def check_glossary(analysis_dir: Path) -> dict:
+    """检查 Glossary 提案制落地情况
+    
+    SKILL.md 要求：项目级扫描时创建 Glossary.md（核心概念统一术语表）。
+    检查：根目录或 00-project-level/ 下存在 Glossary.md 且非空（≥3 条术语行）。
+    """
+    candidates = [
+        analysis_dir / "Glossary.md",
+        analysis_dir / "00-project-level" / "Glossary.md",
+        analysis_dir / "glossary.md",
+    ]
+    glossary_path = next((p for p in candidates if p.exists()), None)
+    if glossary_path is None:
+        return {"exists": False, "path": None, "terms": 0, "ok": False,
+                "message": "缺少 Glossary.md（SKILL.md：项目级扫描时必建统一术语表）"}
+    try:
+        content = glossary_path.read_text()
+    except OSError:
+        content = ""
+    # 术语行近似计数：表格数据行 或 以 - 开头且含 →/: 的行
+    term_lines = [ln for ln in content.splitlines()
+                  if (ln.strip().startswith("|") and "---" not in ln and ln.count("|") >= 2)
+                  or (ln.strip().startswith("-") and ("→" in ln or ":" in ln))]
+    ok = len(term_lines) >= 3
+    return {"exists": True, "path": str(glossary_path), "terms": len(term_lines), "ok": ok,
+            "message": "" if ok else f"Glossary.md 术语条目过少（{len(term_lines)} < 3）"}
+
+
+def check_diagram_types(analysis_dir: Path) -> dict:
+    """检查图表类型多样性（学习视角：原理讲解型图 + 空间布局图）
+
+    检查：
+    1. 40-learning/ 学习卡片：缺 mermaid 图报 warning；整体至少 30% 卡片
+       含"讲解型图"特征（quadrantChart/timeline/gitGraph/Note/对比/演进/权衡关键词）。
+    2. 含"物理布局/文件格式/页结构/内存布局"章节的文档：检测 ASCII 字节图特征
+       （0x 偏移、box-drawing ├│┌、bytes/varint 标注），缺失报 warning。
+    """
+    warnings = []
+    explanatory_kw = ["quadrantChart", "timeline", "gitGraph", "Note over", "Note right", "Note left"]
+    contrast_kw = ["对比", " vs ", "VS ", "失败", "降级", "演进", "权衡"]
+    layout_section_kw = ["物理布局", "文件格式", "页结构", "内存布局", "磁盘布局", "存储格式"]
+    layout_evidence_kw = ["0x", "├", "┌", "│", "bytes", "varint", "offset", "偏移"]
+    
+    # 1) 学习卡片讲解型图覆盖率
+    learning_dir = analysis_dir / "40-learning"
+    cards = list(learning_dir.glob("LEARN_*.md")) if learning_dir.exists() else []
+    explanatory_cards = 0
+    for card in cards:
+        c = card.read_text(errors="ignore")
+        has_mermaid = "```mermaid" in c
+        if not has_mermaid:
+            warnings.append(f"学习卡片缺 mermaid 图: {card.name}")
+        if any(k in c for k in explanatory_kw) or any(k in c for k in contrast_kw):
+            explanatory_cards += 1
+    if cards:
+        rate = explanatory_cards / len(cards)
+        if rate < 0.3:
+            warnings.append(f"讲解型图覆盖率低: {explanatory_cards}/{len(cards)} ({rate:.0%} < 30%)——原理讲解型图（对比/权衡/演进/失败路径）不足")
+    
+    # 2) 布局章节的字节图证据
+    layout_docs = 0
+    layout_missing = []
+    for md in analysis_dir.glob("**/*.md"):
+        c = md.read_text(errors="ignore")
+        if any(k in c for k in layout_section_kw):
+            layout_docs += 1
+            has_evidence = any(k in c for k in layout_evidence_kw)
+            if not has_evidence:
+                layout_missing.append(str(md.relative_to(analysis_dir)))
+    if layout_missing:
+        warnings.append(f"{len(layout_missing)} 个含布局/格式章节的文档缺字节级布局图（ASCII 偏移标注）: " + "; ".join(layout_missing[:5]) + ("..." if len(layout_missing) > 5 else ""))
+    
+    return {"cards": len(cards), "explanatory_cards": explanatory_cards,
+            "layout_docs": layout_docs, "warnings": warnings,
+            "ok": len(warnings) == 0}
+
+
 def format_index_consistency(index_consistency: dict) -> str:
     """格式化 INDEX.md 一致性检查摘要"""
     if not index_consistency:
@@ -296,11 +372,12 @@ def format_index_consistency_detail(index_consistency: dict) -> str:
 
 
 def resolve_required_file(analysis_dir: Path, filename: str) -> Path:
-    """解析必需文件路径：优先根目录，其次 00-project-level/（递归模式布局）
+    """解析必需文件路径：根目录 → 00-project-level/ → REQUIRED_FILES.alt_paths
     
-    支持两种布局：
+    支持两种布局 + alt_paths：
     - 扁平式: 00-README.md, 01-architecture.md, ...
-    - 目录式: 00-project-level/README.md, 00-project-level/architecture.md, ...
+    - 目录式: 00-project-level/README.md, ...
+    - alt_paths: REQUIRED_FILES 显式声明的替代路径（如 20-cross-module/data-flow.md）
     """
     # 1. 先检查根目录（扁平式布局）
     root_path = analysis_dir / filename
@@ -318,6 +395,13 @@ def resolve_required_file(analysis_dir: Path, filename: str) -> Path:
     project_level_original = analysis_dir / '00-project-level' / filename
     if project_level_original.exists():
         return project_level_original
+    
+    # 4. 检查 REQUIRED_FILES 中声明的 alt_paths
+    alt_paths = REQUIRED_FILES.get(filename, {}).get("alt_paths", [])
+    for alt in alt_paths:
+        alt_path = analysis_dir / alt
+        if alt_path.exists():
+            return alt_path
     
     # 返回默认路径（用于报错）
     return project_level
@@ -532,10 +616,10 @@ def check_file_content(analysis_dir: Path, filename: str) -> dict:
     
     # 检查蒸馏章节（设计洞察和隐含陷阱）
     # 仅对架构、依赖、模块分析文档检查
-    # 跳过：README/INDEX（元数据）、core-code/quality-score/learning-value（汇总文档）
+    # 跳过：README/INDEX（元数据）、quality-score/learning-value（汇总文档）
     skip_distillation_names = {
         "00-README.md", "INDEX.md",
-        "02-core-code.md", "03-quality-score.md", "04-learning-value.md",
+        "03-quality-score.md", "04-learning-value.md",
     }
     skip_distillation = filename in skip_distillation_names
     if skip_distillation:
@@ -752,7 +836,7 @@ def check_maximum_mode(analysis_dir: str) -> dict:
     result["details"]["total_files"] = result["total_files"]
     
     # 2. 检查 Layer 1: 项目级分析
-    layer1_files = ["00-README.md", "01-architecture.md", "03-quality-score.md", "04-learning-value.md", "dependencies.md"]
+    layer1_files = ["00-README.md", "01-architecture.md", "03-quality-score.md", "04-learning-value.md", "dependencies.md", "data-flow.md"]
     layer1_exists = [f for f in layer1_files if (analysis_path / f).exists()]
     result["layer1_ok"] = len(layer1_exists) >= 4
     result["details"]["layer1"] = {
@@ -1315,6 +1399,12 @@ def main():
     # INDEX.md 一致性检查
     index_consistency = check_index_consistency(Path(analysis_dir))
     
+    # Glossary 提案制落地检查
+    glossary_check = check_glossary(Path(analysis_dir))
+    
+    # 图表类型多样性检查（讲解型图 / 空间布局图）
+    diagram_check = check_diagram_types(Path(analysis_dir))
+    
     # 生成报告
     report_file = generate_verification_report(analysis_dir, results, index_consistency)
     
@@ -1341,6 +1431,22 @@ def main():
             print(f"INDEX 一致性: ⚠️ {phantom} 个幽灵引用, {orphan} 个孤儿文件")
     else:
         print(f"INDEX 一致性: ❌ INDEX.md 不存在")
+    
+    # Glossary
+    if glossary_check["ok"]:
+        print(f"Glossary 术语表: ✅ {glossary_check['terms']} 条术语")
+    elif glossary_check["exists"]:
+        print(f"Glossary 术语表: ⚠️ {glossary_check['message']}")
+    else:
+        print(f"Glossary 术语表: ❌ {glossary_check['message']}")
+    
+    # 图表类型多样性
+    if diagram_check["cards"]:
+        print(f"学习卡片: {diagram_check['explanatory_cards']}/{diagram_check['cards']} 含讲解型图特征")
+    if diagram_check["warnings"]:
+        print(f"图表多样性: ⚠️ {len(diagram_check['warnings'])} 项提示:")
+        for w in diagram_check["warnings"]:
+            print(f"  - {w}")
     
     # 打印问题
     issues = []
