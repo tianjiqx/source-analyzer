@@ -666,7 +666,8 @@ def check_file_content(analysis_dir: Path, filename: str) -> dict:
     }
 
 
-def generate_verification_report(analysis_dir: str, results: list, index_consistency: dict = None) -> str:
+def generate_verification_report(analysis_dir: str, results: list, index_consistency: dict = None,
+                                 glossary_check: dict = None, diagram_check: dict = None) -> str:
     """生成验证报告"""
     analysis_path = Path(analysis_dir)
     report_file = analysis_path / "VERIFICATION_REPORT.md"
@@ -699,6 +700,8 @@ def generate_verification_report(analysis_dir: str, results: list, index_consist
 | **平均质量分数** | {avg_score:.0f}/100 |
 | **INDEX.md** | {'✅ 存在' if index_exists else '❌ 缺失'} |
 | **INDEX 一致性** | {format_index_consistency(index_consistency) if index_consistency else '未检查'} |
+| **Glossary 术语表** | {('✅ ' + str(glossary_check['terms']) + ' 条术语') if glossary_check and glossary_check['ok'] else ('⚠️ ' + glossary_check['message']) if glossary_check else '未检查'} |
+| **图表多样性** | {((str(diagram_check['explanatory_cards']) + '/' + str(diagram_check['cards']) + ' 学习卡片含讲解型图') if diagram_check and diagram_check['cards'] else ('⚠️ ' + str(len(diagram_check['warnings'])) + ' 项提示') if diagram_check and diagram_check['warnings'] else '✅ 无提示') if diagram_check else '未检查'} |
 | **评估等级** | {'✅ 优秀' if avg_score >= 85 else '⚠️ 良好' if avg_score >= 70 else '❌ 需改进'} |
 
 ---
@@ -706,6 +709,15 @@ def generate_verification_report(analysis_dir: str, results: list, index_consist
 ## INDEX.md 一致性检查
 
 {format_index_consistency_detail(index_consistency) if index_consistency else '未检查'}
+
+---
+
+## Glossary 与图表多样性
+
+**Glossary 术语表**: {('✅ ' + str(glossary_check.get('terms', 0)) + ' 条术语（' + glossary_check.get('path', '') + '）') if glossary_check and glossary_check.get('ok') else ('❌/⚠️ ' + glossary_check.get('message', '')) if glossary_check else '未检查'}
+
+**图表类型多样性**:
+{(chr(10).join('- ' + w for w in diagram_check['warnings']) if diagram_check and diagram_check.get('warnings') else '- ✅ 学习卡片讲解型图覆盖率达标，布局章节均有字节级布局图') if diagram_check else '未检查'}
 
 ---
 
@@ -1406,7 +1418,8 @@ def main():
     diagram_check = check_diagram_types(Path(analysis_dir))
     
     # 生成报告
-    report_file = generate_verification_report(analysis_dir, results, index_consistency)
+    report_file = generate_verification_report(analysis_dir, results, index_consistency,
+                                               glossary_check=glossary_check, diagram_check=diagram_check)
     
     # 打印摘要
     print(f"\n📊 分析验证报告")
