@@ -242,31 +242,56 @@ def check_glossary(analysis_dir: Path) -> dict:
                 "message": "缺少 Glossary.md（SKILL.md：项目级扫描时必建统一术语表）"}
     try:
         content = glossary_path.read_text()
-    except OSError:
-        content = ""
-    # 术语行近似计数：表格数据行 或 以 - 开头且含 →/: 的行
-    term_lines = [ln for ln in content.splitlines()
-                  if (ln.strip().startswith("|") and "---" not in ln and ln.count("|") >= 2)
-                  or (ln.strip().startswith("-") and ("→" in ln or ":" in ln))]
+    except (OSError, UnicodeDecodeError) as e:
+        return {"exists": True, "path": str(glossary_path), "terms": 0, "ok": False,
+                "message": f"Glossary.md 读取失败: {e}"}
+    # 术语行近似计数：表格数据行（跳过表头与分隔线） 或 以 - 开头且含 →/: 的行
+    lines = content.splitlines()
+    table_data_lines = []
+    in_table = False
+    for ln in lines:
+        s = ln.strip()
+        if s.startswith("|") and s.count("|") >= 2:
+            if "---" in s:
+                in_table = True  # 分隔线之后才是数据行
+                continue
+            if in_table:
+                table_data_lines.append(ln)
+        else:
+            in_table = False
+    term_lines = table_data_lines + [ln for ln in lines
+                  if ln.strip().startswith("-") and ("→" in ln or ":" in ln)]
     ok = len(term_lines) >= 3
     return {"exists": True, "path": str(glossary_path), "terms": len(term_lines), "ok": ok,
             "message": "" if ok else f"Glossary.md 术语条目过少（{len(term_lines)} < 3）"}
 
 
+def _mermaid_blocks(content: str) -> list:
+    """提取 markdown 中所有 mermaid 代码块的文本"""
+    blocks = []
+    parts = content.split("```mermaid")
+    for part in parts[1:]:
+        end = part.find("```")
+        if end != -1:
+            blocks.append(part[:end])
+    return blocks
+
+
 def check_diagram_types(analysis_dir: Path) -> dict:
     """检查图表类型多样性（学习视角：原理讲解型图 + 空间布局图）
 
-    检查：
-    1. 40-learning/ 学习卡片：缺 mermaid 图报 warning；整体至少 30% 卡片
-       含"讲解型图"特征（quadrantChart/timeline/gitGraph/Note/对比/演进/权衡关键词）。
-    2. 含"物理布局/文件格式/页结构/内存布局"章节的文档：检测 ASCII 字节图特征
-       （0x 偏移、box-drawing ├│┌、bytes/varint 标注），缺失报 warning。
+    检查（均为 warning 级，不影响通过率）：
+    1. 40-learning/ 学习卡片：缺 mermaid 图报 warning；至少 30% 卡片的 mermaid 块
+       含讲解型图型语法特征（quadrantChart/timeline/gitGraph/Note over 等图内语法，
+       不匹配正文自然语言，避免假通过）。
+    2. 含"物理布局/文件格式/页结构/内存布局"章节的文档：要求 ASCII 字节图组合证据
+       （box-drawing 行 ≥2 或 0x 十六进制偏移行 ≥2），缺失报 warning。
     """
     warnings = []
-    explanatory_kw = ["quadrantChart", "timeline", "gitGraph", "Note over", "Note right", "Note left"]
-    contrast_kw = ["对比", " vs ", "VS ", "失败", "降级", "演进", "权衡"]
+    # 讲解型图的 mermaid 图型语法特征（只在 mermaid 块内匹配）
+    explanatory_kw = ["quadrantChart", "timeline", "gitGraph", "Note over", "Note right", "Note left", "note right of", "note left of"]
+    # 对比型图特征：同一 mermaid 块内出现两个 subgraph（双列对比的语法特征）
     layout_section_kw = ["物理布局", "文件格式", "页结构", "内存布局", "磁盘布局", "存储格式"]
-    layout_evidence_kw = ["0x", "├", "┌", "│", "bytes", "varint", "offset", "偏移"]
     
     # 1) 学习卡片讲解型图覆盖率
     learning_dir = analysis_dir / "40-learning"
@@ -274,28 +299,32 @@ def check_diagram_types(analysis_dir: Path) -> dict:
     explanatory_cards = 0
     for card in cards:
         c = card.read_text(errors="ignore")
-        has_mermaid = "```mermaid" in c
-        if not has_mermaid:
+        blocks = _mermaid_blocks(c)
+        if not blocks:
             warnings.append(f"学习卡片缺 mermaid 图: {card.name}")
-        if any(k in c for k in explanatory_kw) or any(k in c for k in contrast_kw):
+        # 讲解型判定：任一 mermaid 块含图型语法特征，或含 ≥2 个 subgraph（对比双列）
+        is_explanatory = any(any(k in b for k in explanatory_kw) for b in blocks) \
+                          or any(b.count("subgraph ") >= 2 for b in blocks)
+        if is_explanatory:
             explanatory_cards += 1
     if cards:
         rate = explanatory_cards / len(cards)
         if rate < 0.3:
-            warnings.append(f"讲解型图覆盖率低: {explanatory_cards}/{len(cards)} ({rate:.0%} < 30%)——原理讲解型图（对比/权衡/演进/失败路径）不足")
+            warnings.append(f"讲解型图覆盖率低: {explanatory_cards}/{len(cards)} ({rate:.0%} < 30%)——原理讲解型图（quadrantChart/timeline/gitGraph/Note/双列对比 subgraph）不足")
     
-    # 2) 布局章节的字节图证据
+    # 2) 布局章节的字节图证据（组合条件，防正文单词假通过）
     layout_docs = 0
     layout_missing = []
     for md in analysis_dir.glob("**/*.md"):
         c = md.read_text(errors="ignore")
         if any(k in c for k in layout_section_kw):
             layout_docs += 1
-            has_evidence = any(k in c for k in layout_evidence_kw)
-            if not has_evidence:
+            box_lines = sum(1 for ln in c.splitlines() if any(ch in ln for ch in "┌├└│┤"))
+            hex_lines = sum(1 for ln in c.splitlines() if re.search(r"0x[0-9A-Fa-f]+", ln))
+            if box_lines < 2 and hex_lines < 2:
                 layout_missing.append(str(md.relative_to(analysis_dir)))
     if layout_missing:
-        warnings.append(f"{len(layout_missing)} 个含布局/格式章节的文档缺字节级布局图（ASCII 偏移标注）: " + "; ".join(layout_missing[:5]) + ("..." if len(layout_missing) > 5 else ""))
+        warnings.append(f"{len(layout_missing)} 个含布局/格式章节的文档缺字节级布局图（需 box-drawing ≥2 行或 0x 偏移 ≥2 行）: " + "; ".join(layout_missing[:5]) + ("..." if len(layout_missing) > 5 else ""))
     
     return {"cards": len(cards), "explanatory_cards": explanatory_cards,
             "layout_docs": layout_docs, "warnings": warnings,
@@ -849,15 +878,15 @@ def check_maximum_mode(analysis_dir: str) -> dict:
     
     # 2. 检查 Layer 1: 项目级分析
     layer1_files = ["00-README.md", "01-architecture.md", "03-quality-score.md", "04-learning-value.md", "dependencies.md", "data-flow.md"]
-    layer1_exists = [f for f in layer1_files if (analysis_path / f).exists()]
-    result["layer1_ok"] = len(layer1_exists) >= 4
+    layer1_exists = [f for f in layer1_files if resolve_required_file(analysis_path, f).exists()]
+    result["layer1_ok"] = len(layer1_exists) >= 5
     result["details"]["layer1"] = {
         "required": layer1_files,
         "exists": layer1_exists,
         "count": len(layer1_exists)
     }
     if not result["layer1_ok"]:
-        result["issues"].append(f"Layer 1 不完整：{len(layer1_exists)}/5 个文件")
+        result["issues"].append(f"Layer 1 不完整：{len(layer1_exists)}/6 个文件")
     
     # 3. 检查 Layer 2: 模块级分析
     module_dirs = [d for d in analysis_path.iterdir() if d.is_dir() and d.name.startswith("10-module-")]

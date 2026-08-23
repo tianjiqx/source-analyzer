@@ -177,9 +177,11 @@ def generate_analysis_plan(project_path: str, output_dir: str) -> str:
     tasks.append("    - Project Info Table (name, description, license, stars)")
     tasks.append("    - Tech Stack Table (languages, frameworks, tools)")
     tasks.append("    - Quick Start Steps")
+    tasks.append("  - Write: `Glossary.md` (unified terminology, >=3 terms; reused by all later tasks)")
     tasks.append("")
     tasks.append("- [ ] **Step 5: Verify output**")
     tasks.append("  - Check: file exists, has basic info table, no placeholders")
+    tasks.append("  - Check: Glossary.md exists with >=3 term entries")
     tasks.append("")
     
     # Task 2: Architecture
@@ -227,15 +229,15 @@ def generate_analysis_plan(project_path: str, output_dir: str) -> str:
     tasks.append("  - Check: has module table, data flow, no placeholders")
     tasks.append("")
     
-    # Task 3: Core Code
-    tasks.append("""### Task 3: Analyze Core Code
+    # Task 3: Data Flow（跨模块数据流，SKILL.md 必产；取代已废弃的 02-core-code.md）
+    tasks.append("""### Task 3: Analyze Cross-Module Data Flow
 
 **Priority**: P0
-**Output**: `02-core-code.md`
+**Output**: `data-flow.md` (00-project-level/ or 20-cross-module/)
 **Estimated Time**: 30-45 minutes
 
 **Input Files**:
-- Key classes identified in architecture
+- Module analyses, architecture doc
 """)
     
     tasks.append("")
@@ -259,14 +261,14 @@ def generate_analysis_plan(project_path: str, output_dir: str) -> str:
     tasks.append("  - Analyze: plugin pattern, factory pattern, strategy pattern, etc.")
     tasks.append("  - Document: where used, why used, benefits")
     tasks.append("")
-    tasks.append("- [ ] **Step 5: Write core code document**")
-    tasks.append("  - Write: `02-core-code.md` with:")
-    tasks.append("    - Key Classes Table (name, module, purpose, line count)")
-    tasks.append("    - Design Patterns Table (pattern, location, description)")
-    tasks.append("    - Code Snippets (at least 3 examples)")
+    tasks.append("- [ ] **Step 5: Write data-flow document**")
+    tasks.append("  - Write: `data-flow.md` with:")
+    tasks.append("    - 1-3 core business flows, each step: data shape change + module/file (file:line)")
+    tasks.append("    - Mermaid sequenceDiagram or flowchart per flow")
+    tasks.append("    - Glossary terms reused")
     tasks.append("")
     tasks.append("- [ ] **Step 6: Verify output**")
-    tasks.append("  - Check: has class table, code examples, no placeholders")
+    tasks.append("  - Check: has flow diagrams, file:line anchors, no placeholders")
     tasks.append("")
     
     # Task 4: Quality

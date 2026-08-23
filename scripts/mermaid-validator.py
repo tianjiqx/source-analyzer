@@ -84,6 +84,8 @@ VALID_TYPES = {
     'mindmap', 'mindmap;',
     'journey', 'journey;',
     'gitGraph', 'gitGraph;',
+    'quadrantChart', 'quadrantChart;',
+    'timeline', 'timeline;',
     'C4Context', 'C4Container', 'C4Component',
 }
 
@@ -98,6 +100,8 @@ VALID_TYPE_PREFIXES = {
     'mindmap',
     'journey',
     'gitGraph',
+    'quadrantChart',
+    'timeline',
     'C4Context', 'C4Container', 'C4Component',
 }
 

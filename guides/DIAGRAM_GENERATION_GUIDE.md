@@ -263,8 +263,8 @@ flowchart LR
 ```mermaid
 quadrantChart
     title 检索方案权衡：召回率 vs 成本
-    axis-low "低召回" --> axis-high "高召回"
-    axis-low "低成本" --> axis-high "高成本"
+    x-axis "低成本" --> "高成本"
+    y-axis "低召回" --> "高召回"
     quadrant-1 "高价值区"
     quadrant-2 "需论证"
     quadrant-3 "不推荐"
