@@ -15,7 +15,7 @@
 | 并行上限 | 建议 12-20（实测峰值 20 稳定；workflow 引擎实测并发 12/20 全放行，2026-08 探针验证） |
 | workflow schema 门 | ⚠️ **实测不可靠**（拒绝 JSON/多余字段/缺 required 均被放行，2026-08 严格探针）——结构校验必须在 workflow JS 脚本内代码级实现（`dsh-source-analyzer/preset/analysis-workflow.js` 的 validateReport） |
 | 文件系统 | 仅会话工作区可写（如 `/mnt/disk2/dsh-ws`）；`$SKILL_DIR`、home 等多为只读挂载 |
-| 恢复机制 | goal 自动延续轮 + 输出目录（PLAN/checkpoint/active-goals.json） |
+| 恢复机制 | goal 自动延续轮 + 输出目录（PLAN/checkpoint/task-report） |
 
 ## 行为接口映射
 

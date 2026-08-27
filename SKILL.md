@@ -1,6 +1,6 @@
 ---
 name: source-analyzer
-description: 系统化分析开源项目源码，生成架构图和模块依赖关系。适用于理解大型代码库结构、梳理模块关系、生成技术文档。
+description: Use when 需要系统化分析开源项目源码、梳理架构与模块依赖、追踪数据流，或生成带证据和可视化图表的技术文档。
 metadata: {"openclaw":{"emoji":"🔬"}}
 ---
 
@@ -130,7 +130,7 @@ python3 $SKILL_DIR/scripts/verify-analysis.py $OUTPUT_BASE/project-name --all
 
 1. **主 agent 零代码阅读**：只读 README/文档、自己的产出（PLAN/Glossary/INDEX/task-report/验证报告）和文件清单（glob/wc/find 输出、module manifest）。**禁止逐行读取源码文件**——那是子代理的工作。需要了解项目结构时，先派"项目侦察"子代理输出 `.project-scout.json`。理由：主 agent 上下文是 4-8 小时流水线中最稀缺的资源。
 2. **六段式派发全局强制**：见下节"六段式结构化派发模板"——它不再只属于递归深度模式，任何分析模式派发子代理都必须使用。单段任务描述（"你是一个源码分析专家，请分析…"）是派发漂移之源，**禁止**。
-3. **批次派发用 workflow**：≥2 个子任务的批次（DSH 环境）优先用 `workflow` 工具（`analysis-workflow.js`），代码化拼装 + 结构门 + 批内重试；仅在 workflow 工具本身报错时回退直接 `subagent`（回退派发仍须六段式）。
+3. **批次派发用 workflow**：≥2 个子任务的批次（DSH 环境）优先用运行时提供的 `workflow` 工具，代码化拼装 + 结构门 + 批内重试；仅在 workflow 工具本身报错时回退直接 `subagent`（回退派发仍须六段式）。
 4. **禁止轮询等待**：不要 `sleep && ls` / 反复 `list_agents` 等子代理。后台子代理完成后会自动通知；派发之间做有用的事（验收上批产出、合并 Glossary 提案、更新 checkpoint）或直接结束回合。
 5. **每批必验收**：每个 [WAIT] 后运行 `verify-analysis.py` **和** `evidence-check.py` 才能标记批次完成；验收不过 → `send_message` 补齐一次 → 仍不过 → 主 agent 兜底手写并注明。
 
@@ -179,7 +179,7 @@ output-dir/
 
 | 模式 | 触发 | 深度 | 输出规模 | 详情 |
 |------|------|------|---------|------|
-| **标准三层** | 默认 | 项目级+模块级+文件级（按需） | 20-60 文档 | 本节 + `analysis-workflow.js` |
+| **标准三层** | 默认 | 项目级+模块级+文件级（按需） | 20-60 文档 | 本节 + 运行时适配层 |
 | **🚀 最大分析** | "深度/详细/全面/彻底"等关键词 | 三层全开 + 专项全开 | 40-80+ 文档 | [guides/RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) |
 | **🔁 递归深度** | "递归分析/逐模块深入"等关键词 | 每模块完整三层递归 | 120-350+ 文档 | [guides/RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) |
 
@@ -451,7 +451,7 @@ output-dir/
 1. **并行派发子任务**：不同维度分析任务分配给并行执行器（使用 `[DISPATCH]` 行为指令）
 2. **增量生成**：先生成核心文档，再补充专项分析
 3. **质量优先**：每个文档必须包含完整的问题清单回答
-4. **🎨 图表必生成**：每个分析文档至少 1 个 Mermaid 图表
+4. **🎨 图表必生成**：每个分析文档至少 1 个与内容匹配的图表；涉及物理布局、字节格式或内存结构时使用 ASCII 布局图（详见 `guides/DIAGRAM_GENERATION_GUIDE.md`），不强求 Mermaid。
 
 ---
 

@@ -1,6 +1,6 @@
 # Source Analyzer
 
-🔬 开源项目源码分析的系统化工作流
+🔬 开源项目源码分析的系统化工作流（环境无关）
 
 ## 核心特性
 
@@ -14,17 +14,17 @@
 
 ## 安装
 
-将当前 skill 拷贝到 OpenClaw 的 skills 工作目录即可使用：
+将当前 skill 拷贝到目标运行环境的 skills 工作目录即可使用。具体加载方式由运行时决定，参见 [`runtime/adapter.md`](runtime/adapter.md)。
 
 ```bash
-# 创建目标目录（如果不存在）
+# 以 OpenClaw 为例：创建目标目录（如果不存在）
 mkdir -p ~/.openclaw/workspace/skills
 
 # 拷贝 skill 到工作目录
 cp -r /path/to/source-analyzer ~/.openclaw/workspace/skills/
 ```
 
-安装后，即可在 OpenClaw 中使用 `source-analyzer` skill 进行项目分析。
+安装后即可在对应运行时中使用 `source-analyzer` skill 进行项目分析。
 
 ## 快速开始
 
@@ -33,6 +33,7 @@ cp -r /path/to/source-analyzer ~/.openclaw/workspace/skills/
 ```bash
 # Step 1: 智能分析（自动检测项目类型 + 推荐模板）
 python3 scripts/smart-analyze.py /path/to/project \
+  --model "$(cat "$WORKSPACE/.current-model" 2>/dev/null || echo 'unknown')" \
   -o ~/.openclaw/learning/projects/project-name
 
 # Step 2: 生成研究计划
@@ -40,8 +41,8 @@ python3 scripts/generate-research-plan.py /path/to/project \
   --depth file-level --max-files 30 \
   -o ~/.openclaw/learning/projects/project-name/RESEARCH_PLAN.md
 
-# Step 3: 执行分析（使用 sessions_spawn 并行）
-# 根据 RESEARCH_PLAN.md 派发子任务
+# Step 3: 执行分析（按 runtime/adapter.md 选择并行或串行机制）
+# 根据 RESEARCH_PLAN.md，使用当前环境的派发机制执行子任务
 
 # Step 4: 验证结果
 python3 scripts/verify-analysis.py ~/.openclaw/learning/projects/project-name --all
@@ -158,10 +159,10 @@ python3 scripts/verify-analysis.py <output-dir> --maximum
 
 ## 执行注意事项
 
-1. **使用 sessions_spawn 并行执行**：不同维度分析任务分配给子代理
+1. **按运行时适配层执行**：支持并行时将独立维度分配给子代理，否则串行执行
 2. **增量生成**：先生成核心文档，再补充专项分析
 3. **质量优先**：每个文档必须包含完整的问题清单回答
-4. **🎨 图表必生成**：每个分析文档至少 1 个 Mermaid 图表
+4. **🎨 图表必生成**：每个分析文档至少 1 个与内容匹配的图表；物理布局使用 ASCII 图
 
 ## 执行闭环
 
