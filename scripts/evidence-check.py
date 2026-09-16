@@ -30,12 +30,20 @@ from pathlib import Path
 # 匹配文件引用：支持反引号内外的格式
 # 格式1: `file.py:123` 或 `file.py:123-456`（标准）
 # 格式2: file.py:123 或 file.py:123-456（非标准，但实际存在）
-REF_RE = re.compile(r"`?([a-zA-Z0-9_/]+\.(?:go|py|rs|java|ts|js|c|cc|cpp|h|hpp|rb|php|kt|swift|scala)):(\d+)(?:-(\d+))?`?")
+# 注：md/markdown 项目（Agent Skill 等）证据引用为 .md 文件，必须纳入匹配
+REF_RE = re.compile(r"`?([a-zA-Z0-9_/.-]+\.(?:go|py|rs|java|ts|js|c|cc|cpp|h|hpp|rb|php|kt|swift|scala|md|sh|toml|json|yaml|yml|erl|hrl|ex|exs|cs|lua|sql|proto)):(\d+)(?:-(\d+))?`?")
 FORBIDDEN_NOTE = "[未验证]"
 
 
 def find_md_files(analysis_dir: Path):
-    return sorted(p for p in analysis_dir.rglob("*.md") if p.name != "EVIDENCE_REPORT.md")
+    # 排除自动生成/元文档：EVIDENCE_REPORT.md（本脚本）、PLAN.md/INDEX.md/
+    # VERIFICATION_REPORT.md/VERSION.md（编排与验收文档，非分析产出，无证据义务）
+    # 以及隐藏文件（.glossary-*.md 术语提案等点前缀元文档，天然无证据义务）
+    meta = {"EVIDENCE_REPORT.md", "PLAN.md", "INDEX.md", "VERIFICATION_REPORT.md", "VERSION.md", "MERMAID_VALIDATION_REPORT.md", "RECURSIVE_MODE_REPORT.md"}
+    return sorted(
+        p for p in analysis_dir.rglob("*.md")
+        if p.name not in meta and not any(part.startswith(".") for part in p.relative_to(analysis_dir).parts)
+    )
 
 def extract_module_path(analysis_dir: Path, md_file: Path) -> str:
     """从文档路径推断模块路径（用于多文件匹配时的路径推断）"""
@@ -408,11 +416,12 @@ def main():
         "low_evidence_docs": low_docs,
     }
     if args.json:
-        print(json.dumps({**summary, "bad_details": [(str(a), b) for a, b in results]}, ensure_ascii=False, indent=1))
+        print(json.dumps({**summary, "bad_details": [(str(r[0]), r[1]) for r in results]}, ensure_ascii=False, indent=1))
     else:
         print(f"扫描文档: {len(sampled)}/{len(mds)}（抽样 {args.sample:.0%}）")
         print(f"引用总数: {total_refs}，失效引用: {bad_refs}，造假率: {fake_rate:.1%}")
-        for doc, bads in results:
+        for item in results:
+            doc, bads = item[0], item[1]
             print(f"\n❌ {doc}")
             for b in bads[:5]:
                 print(f"   - {b}")
@@ -424,7 +433,8 @@ def main():
                   f"- 引用: {total_refs}，失效: {bad_refs}，造假率: {fake_rate:.1%}",
                   f"- 结论: {'✅ 通过' if passed else '❌ 不合格（全产出复审）'}", "",
                   "## 失效引用明细", ""]
-        for doc, bads in results:
+        for item in results:
+            doc, bads = item[0], item[1]
             report.append(f"### {doc}")
             report += [f"- {b}" for b in bads]
             report.append("")

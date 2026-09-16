@@ -79,7 +79,7 @@ ORPHAN_EXCLUDE_NAMES = {
     'CONVENTIONS.md',               # 写作约定
     'VERIFICATION_REPORT.md', 'PLAN_VERIFICATION_REPORT.md',
     'RECURSIVE_MODE_REPORT.md', 'MAXIMUM_MODE_REPORT.md',
-    'MERMAID_VALIDATION_REPORT.md', # 验证报告
+    'MERMAID_VALIDATION_REPORT.md', 'EVIDENCE_REPORT.md', # 验证报告（evidence-check 自产，避免根级孤儿误报）
     'project-meta.json',            # 项目元数据
     'EVALUATION_REPORT.md',         # 评估报告
 }
