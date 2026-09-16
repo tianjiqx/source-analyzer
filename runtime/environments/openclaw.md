@@ -4,6 +4,10 @@
 
 ## 能力映射
 
+### LLM 请求预算
+
+调用 `context_budget.py` 生成 `LLM_REQUEST_BUDGET.json` 后，将其中的预算字段加入 `sessions_spawn` 的任务上下文。OpenClaw/provider 支持请求级 `max_input_tokens` 或 `max_tokens` 时按对应字段映射；不支持时仍须在任务提示中执行同一输入预算和拆分规则。
+
 | 行为接口 | OpenClaw 实现 | 说明 |
 |----------|--------------|------|
 | `task.dispatch` | `sessions_spawn(task=..., label=..., mode="run")` | 创建并行子代理 |

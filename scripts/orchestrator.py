@@ -26,11 +26,23 @@ import time
 import threading
 import signal
 import re
+import importlib.util
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, asdict, field
 from enum import Enum
+
+
+def _load_context_budget():
+    path = Path(__file__).with_name("context_budget.py")
+    spec = importlib.util.spec_from_file_location("source_analyzer_context_budget", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+CONTEXT_BUDGET = _load_context_budget()
 
 
 # 自定义 JSON 编码器
@@ -68,6 +80,10 @@ class OrchestratorConfig:
     enable_context_budget: bool = True            # 启用上下文预算
     max_tokens_per_task: int = 50000              # 每个任务最大 token
     max_source_lines: int = 5000                  # 每个任务最大源码行数
+    model: str = "unknown"                        # 当前分析模型
+    context_window: Optional[int] = None          # 模型总上下文窗口
+    max_input_tokens: int = 0                     # 按模型动态计算
+    max_output_tokens: int = 0                    # 按模型动态计算
 
 
 # ============================================================
@@ -632,6 +648,12 @@ class AnalysisOrchestrator:
             self.logger.info(f"Handoff system enabled: {self.handoff_dir}")
         if self.config.enable_context_budget:
             self.logger.info(f"Context budget: {self.config.max_tokens_per_task} tokens, {self.config.max_source_lines} lines")
+            self.logger.info(
+                f"LLM request budget: model={self.config.model} "
+                f"context={self.config.context_window} "
+                f"input={self.config.max_input_tokens} "
+                f"output={self.config.max_output_tokens}"
+            )
     
     def _init_handoff_system(self):
         """初始化 Handoff 文件系统"""
@@ -1127,6 +1149,8 @@ def main():
     parser.add_argument("--max-retries", type=int, default=3, help="Max retries per task")
     parser.add_argument("--timeout", type=int, default=600, help="Task timeout in seconds")
     parser.add_argument("--health-interval", type=int, default=30, help="Health check interval")
+    parser.add_argument("--model", default=os.environ.get("OPENCLAW_MODEL", "unknown"), help="当前分析模型")
+    parser.add_argument("--context-window", type=int, default=None, help="模型总上下文 token 数；未提供时按环境变量/模型映射推断")
     
     args = parser.parse_args()
     
@@ -1141,10 +1165,20 @@ def main():
     os.makedirs(analysis_dir, exist_ok=True)
     
     # 创建配置
+    budget = CONTEXT_BUDGET.calculate_budget(args.model, args.context_window)
+    budget_path = os.path.join(analysis_dir, "LLM_REQUEST_BUDGET.json")
+    with open(budget_path, "w", encoding="utf-8") as f:
+        json.dump(budget, f, indent=2, ensure_ascii=False)
+
     config = OrchestratorConfig(
         max_retries=args.max_retries,
         task_timeout=args.timeout,
         health_check_interval=args.health_interval,
+        model=args.model,
+        context_window=budget["context_window"],
+        max_tokens_per_task=budget["max_input_tokens"],
+        max_input_tokens=budget["max_input_tokens"],
+        max_output_tokens=budget["max_output_tokens"],
     )
     
     # 创建编排器

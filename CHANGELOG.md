@@ -1,5 +1,11 @@
 # Source Analyzer Skill 更新日志
 
+## 2026-09-16 - 🧠 按模型上下文窗口生成 LLM 请求预算
+
+- 新增 `scripts/context_budget.py`，根据显式窗口、环境变量、模型映射或 256K 默认值计算 `max_input_tokens` / `max_output_tokens`。
+- `orchestrator.py` 新增 `--model`、`--context-window`，启动时生成 `LLM_REQUEST_BUDGET.json` 并使用动态输入预算。
+- SKILL、运行时适配文档和 README 统一要求派发时传递预算，超限按边界拆分，避免把总上下文直接作为输入上限。
+
 ## 2026-08-21 - 📦 分仓 - DSH 专属内容迁至 dsh-source-analyzer
 
 ### 🎯 概述

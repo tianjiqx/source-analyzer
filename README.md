@@ -28,6 +28,17 @@ cp -r /path/to/source-analyzer ~/.openclaw/workspace/skills/
 
 ## 快速开始
 
+### 按模型设置请求上下文
+
+分析前根据当前模型生成请求预算；默认未知模型按 256K 处理，显式的 `--context-window` 或 `SOURCE_ANALYZER_CONTEXT_WINDOW` 优先：
+
+```bash
+python3 scripts/context_budget.py --model "$MODEL" \
+  > "$OUTPUT_BASE/project-name/LLM_REQUEST_BUDGET.json"
+```
+
+派发子任务时使用该文件中的 `max_input_tokens` / `max_output_tokens`，输入超限按模块边界拆分。
+
 ### 自动化流程（推荐）
 
 ```bash

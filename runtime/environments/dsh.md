@@ -19,6 +19,10 @@
 
 ## 行为接口映射
 
+### LLM 请求预算
+
+在 `subagent` 或 `workflow` 派发前读取 `LLM_REQUEST_BUDGET.json`。将 `context_window`、`max_input_tokens`、`max_output_tokens` 放入子代理请求元数据/提示词；DSH 原生工具若不接受同名字段，则在提示词中明确要求代理遵守 `max_input_tokens`，并按模块边界拆分超预算输入。模型上下文由运行时提供时优先传给 `context_budget.py --context-window`。
+
 | 行为接口 | DSH 实现 |
 |----------|---------|
 | `task.dispatch` | `subagent(prompt=..., run_in_background=true)`；`[DISPATCH: ...]` 块 → subagent |

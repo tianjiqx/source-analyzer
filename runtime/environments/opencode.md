@@ -4,6 +4,10 @@
 
 ## 能力映射
 
+### LLM 请求预算
+
+调用 `context_budget.py` 生成 `LLM_REQUEST_BUDGET.json`，将预算字段传给 Task tool 或子进程的 LLM 请求。若 adapter 只接受 `max_tokens`，使用 `max_output_tokens` 映射该字段，同时在提示上下文中保留 `max_input_tokens`；超预算输入必须拆分。
+
 | 行为接口 | opencode 实现 | 说明 |
 |----------|--------------|------|
 | `task.dispatch` | Task tool / 子进程 fork | 派发分析子任务 |

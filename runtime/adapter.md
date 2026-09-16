@@ -17,6 +17,21 @@
 
 ## 三层分离
 
+### LLM 请求上下文预算（所有环境通用）
+
+适配层在派发请求前必须读取 `$OUTPUT_BASE/LLM_REQUEST_BUDGET.json`（或运行 `scripts/context_budget.py` 生成）。`context_window` 是模型总窗口，`max_input_tokens` 是本次请求允许的输入上限，`max_output_tokens` 是输出/工具预留；三者不可混用。请求参数名称按 provider 映射，但语义必须保持一致。总窗口未知时使用 256K 保守默认值，并在报告中记录 `context_window_source=default`。
+
+推荐调用：
+
+```bash
+python3 "$SKILL_DIR/scripts/context_budget.py" --model "$MODEL" \
+  > "$OUTPUT_BASE/LLM_REQUEST_BUDGET.json"
+```
+
+如需显式指定窗口，设置 `SOURCE_ANALYZER_CONTEXT_WINDOW` 或追加 `--context-window <tokens>`。
+
+任何任务输入超过 `max_input_tokens` 都必须先拆分或压缩；不能依赖 provider 在超限后才报错。
+
 ### Layer 1: 意图 (Intent) — 环境无关
 
 Skill 的核心分析逻辑，定义"做什么"：
