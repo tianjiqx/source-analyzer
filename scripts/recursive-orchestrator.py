@@ -62,7 +62,22 @@ def get_expected_files(module: dict, output_dir: str) -> list:
     return files
 
 
-def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_path: str) -> tuple:
+def initial_handoff(output_dir):
+    """Reference optional initial evidence without loading or treating it as verified."""
+    initial = Path(output_dir) / '00-initial'
+    if not initial.is_dir():
+        return ''
+    return f"""\n=== 初步成果续接 ===
+- 先读 {initial}/INDEX.md、analysis-state.json、code-map.md、deep-dive-roadmap.md。
+- 核对源码路径、commit 与脏工作区；按本轮问题读取相关底稿，复查失效证据。
+- 复用有效映射和术语，初步概览完成不代表模块已深入完成。
+- 按本轮 manifest/PLAN 的范围展开，缺口和推断作为待验证问题，不自动扩展全仓。
+- 收尾回填初步认知修正及路线图，引用详细底稿；已有 reading/ 时检查来源变化。
+- 局部任务仅按本轮计划与内容证据验收，最后的 --recursive 仅适用于全项目递归。
+"""
+
+
+def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_path: str, plan_path=None) -> tuple:
     """生成计划驱动的分析任务描述（环境无关）"""
     
     name = module['name']
@@ -89,12 +104,14 @@ def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_pat
     # 统计预期文件数
     est = len(expected)
     
-    task = f"""[计划驱动执行] PLAN.md Task #{task_id}
+    plan_ref = str(plan_path or Path(output_dir) / 'PLAN.md')
+    task = f"""[计划驱动执行] {Path(plan_ref).name} Task #{task_id}
 
 你正在执行递归深度分析计划中的一个模块任务。
-全局计划文件: {output_dir}/PLAN.md
+全局计划文件: {plan_ref}
 你的任务编号: #{task_id}
 模块名称: {name}
+{initial_handoff(output_dir)}
 
 === 模块信息 ===
 - 路径: {project_path}/{path}
@@ -162,7 +179,7 @@ def generate_spawn_task(module: dict, task_id: int, output_dir: str, project_pat
     return task, est
 
 
-def generate_plan(manifest, output_dir, project_path, max_parallel, priority_only):
+def generate_plan(manifest, output_dir, project_path, max_parallel, priority_only, plan_path=None):
     modules = manifest['modules']
     
     if priority_only:
@@ -179,7 +196,7 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
     # 统计
     total_est = 0
     for m in modules:
-        _, est = generate_spawn_task(m, 0, output_dir, project_path)
+        _, est = generate_spawn_task(m, 0, output_dir, project_path, plan_path)
         total_est += est
     
     dist = {
@@ -253,13 +270,17 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
 
 """
 
+    handoff = initial_handoff(output_dir)
+    if handoff:
+        plan = plan.replace('## Phase 1:', handoff + '\n## Phase 1:', 1)
+
     task_id = 2  # Task 1 是项目级
     
     for batch_idx, batch in enumerate(batches):
         plan += f"### 批次 {batch_idx + 1} / {len(batches)}\n\n"
         
         for module in batch:
-            task_desc, est = generate_spawn_task(module, task_id, output_dir, project_path)
+            task_desc, est = generate_spawn_task(module, task_id, output_dir, project_path, plan_path)
             label = f"module-{module_slug(module['name'])}"
             expected = get_expected_files(module, output_dir)
             expected_list = '\n'.join(f"  - {f}" for f in expected)
@@ -317,6 +338,8 @@ def generate_plan(manifest, output_dir, project_path, max_parallel, priority_onl
 6. 标准验证: `python3 scripts/verify-analysis.py . --recursive`
 """
 
+    if plan_path:
+        plan = plan.replace('--plan PLAN.md', f'--plan "{plan_path}"')
     return plan
 
 
@@ -333,6 +356,9 @@ def main():
     parser.add_argument('--priority-only', action='store_true', help='只生成 high 重要性模块的任务')
     
     args = parser.parse_args()
+
+    if args.max_parallel < 1:
+        parser.error('--max-parallel 必须大于 0')
     
     if not args.manifest.exists():
         print(f"❌ 清单文件不存在: {args.manifest}", file=sys.stderr)
@@ -340,15 +366,19 @@ def main():
     
     manifest = load_manifest(args.manifest)
     
+    output_path = args.output or (args.output_dir / 'PLAN.md')
+    if (args.output_dir / '00-initial').exists() and output_path.exists():
+        parser.error('续接初步成果时拒绝覆盖已有计划；用 --output 指定本轮新计划路径')
+
     plan = generate_plan(
         manifest,
         str(args.output_dir),
         args.project_path,
         args.max_parallel,
         args.priority_only,
+        plan_path=output_path,
     )
     
-    output_path = args.output or (args.output_dir / 'PLAN.md')
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(plan)

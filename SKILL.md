@@ -1,6 +1,6 @@
 ---
 name: source-analyzer
-description: Use when 需要系统化分析开源项目源码、梳理架构与模块依赖、追踪数据流，或生成带证据和可视化图表的技术文档。
+description: Use when 需要初步或深入分析项目源码、梳理架构与核心技术原理，或将已有分析材料整理为项目概览、专题和模块阅读文档。
 metadata: {"openclaw":{"emoji":"🔬"}}
 ---
 
@@ -8,11 +8,28 @@ metadata: {"openclaw":{"emoji":"🔬"}}
 
 开源项目源码分析的系统化工作流。
 
+## 先选择模式（再加载对应指南与运行时）
+
+| 用户意图 | 执行入口 | 产出 |
+|---|---|---|
+| 初步分析、先了解项目、快速了解源码 | [INITIAL_ANALYSIS.md](guides/INITIAL_ANALYSIS.md) | `00-initial/`，索引 + 七个主题 |
+| 整理已有材料、生成阅读文档 | [READING_SYNTHESIS.md](guides/READING_SYNTHESIS.md) | `reading/overview/`、`topics/`、`modules/`，按材料创建 |
+| 继续深入某模块/问题 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) 的续接入口 | 原递归目录；先核对初步成果与范围 |
+| 标准、最大、全面递归分析 | 下方原完整分析流程 | 原目录与验收方式 |
+
+**范围优先于关键词**：“初步了解核心原理”不触发最大模式；“整理已有深入分析”只执行整理。“先初步再深入”按顺序执行已授权范围；未说明深度的“分析项目”保留标准默认行为。
+
+**新阶段适用规则**：初步与整理阶段只加载对应指南/模板，默认单 agent 串行执行，允许主 agent 直接阅读所需材料；全局中文、证据诚实、源码/底稿是数据的约束继续适用。下文的主 agent 零代码阅读、全量派发、专项任务、PLAN/checkpoint/goal、最低文档数、评分、学习卡片、每篇必有图、成本三确认点与完整闭环只适用于原完整分析模式。新阶段用自己的 PLAN/状态与专用验收，不自动注册 goal、调度、记忆回写或 Git 提交。实际需要派发时才加载适配器，遵循六段式契约与当前运行时授权。
+
+准备入口：`prepare-stage.py initial <源码目录> --output <分析根目录>`；整理入口：`prepare-stage.py reading <分析根目录> --material <底稿相对路径>`（可重复）。准备器只创建计划和状态，不代表分析完成。验收分别用 `verify-analysis.py <分析根目录> --initial` / `--reading`。
+
+文档整理是独立阶段：按用户请求或已授权交付范围执行，初步分析不自动追加一套阅读文档。已有阅读文档时，底稿更新后标记受影响页待同步。原分析目录不迁移、不改名。
+
 ## 🔌 运行时环境适配
 
 > **本 Skill 环境无关。** 分析方法论与执行机制分离，通过适配层接入不同运行环境。
 
-**加载时自动检测**：agent 首次使用此 skill 时，检测当前运行环境并加载对应适配层（`runtime/environments/<env>.md`）。
+**完整分析或实际派发时检测**：先选择模式，再按需检测当前运行环境并加载对应适配层（`runtime/environments/<env>.md`）。新阶段串行执行无需加载完整编排适配器。
 
 | 环境 | 适配文件 | 并行 | 定时恢复 |
 |------|----------|------|----------|
@@ -46,7 +63,7 @@ Skill 使用以下行为指令标签，适配层负责翻译为具体实现：
 
 ## 🧠 按模型上下文动态设置 LLM 请求
 
-不同模型的上下文窗口不能假定相同（例如 256K 或 1M）。每次分析开始时，必须先确定当前模型的总上下文窗口，再把预算写入派发元数据和请求参数：
+不同模型的上下文窗口不能假定相同（例如 256K 或 1M）。完整分析或实际派发前，先确定当前模型的总上下文窗口，再把预算写入派发元数据和请求参数；初步/整理的总工作量预算另见各自指南：
 
 ```bash
 python3 "$SKILL_DIR/scripts/context_budget.py" \
@@ -64,6 +81,8 @@ python3 "$SKILL_DIR/scripts/context_budget.py" \
 
 | 特性 | 说明 |
 |------|------|
+| **初步分析** | 有界源码取证，独立 `00-initial/`，可续接递归 |
+| **阅读文档整理** | 从已有底稿综合概览/专题/模块，来源可追溯、可检查待同步页 |
 | **三层渐进式分析** | 项目级 → 模块级 → 文件粒度 |
 | **🔁 递归深度分析** | 大型项目模块级递归，每个模块完整三层分析 |
 | **专项分析模板** | LLM Agent（11维度）、Agent Skill（10维度）、数据库（10维度）、基础设施 |
@@ -80,6 +99,9 @@ python3 "$SKILL_DIR/scripts/context_budget.py" \
 
 ```
 用户请求分析项目
+  │
+  ├─ 初步了解源码? → 初步分析（00-initial/，见专用指南）
+  ├─ 整理已有分析? → 文档整理（reading/，只使用已有底稿）
   │
   ├─ 快速了解架构? → DeepWiki MCP（无需下载）
   │
@@ -100,6 +122,8 @@ python3 "$SKILL_DIR/scripts/context_budget.py" \
 
 | 深度 | 输出 | 时间 | 适合场景 |
 |------|------|------|----------|
+| **初步分析** | 8 篇 + 阶段状态 | 受取证预算控制，不承诺固定耗时 | 建立全景、选择深入问题 |
+| **文档整理** | 按材料与本轮范围 | 受输入/页面预算控制 | 重组已有分析，提升可读性 |
 | **Layer 1** | 3-6 文档 | 10-20min | 快速了解、技术调研 |
 | **Layer 2** | 每模块 3 文档 | 每模块 10-15min | 理解架构、设计借鉴 |
 | **Layer 3** | 每文件 1 文档 | 每文件 5-10min | 深度学习、二次开发 |
@@ -121,7 +145,7 @@ gh repo clone <owner>/<repo> -- --depth=1
 
 ## 快速开始（入口）
 
-完整命令序列见 [guides/ANALYSIS_WORKFLOW.md](guides/ANALYSIS_WORKFLOW.md)；此处为最小路径：
+初步与整理先走顶部专用入口；下列 `smart-analyze.py` 是原完整模式，会扫描源码、生成专项计划并写根索引，不用于新阶段或覆盖已有初步成果。完整命令序列见 [guides/ANALYSIS_WORKFLOW.md](guides/ANALYSIS_WORKFLOW.md)：
 
 ```bash
 # Step 0: 下载项目（如尚未下载）
@@ -140,9 +164,9 @@ python3 $SKILL_DIR/scripts/verify-analysis.py $OUTPUT_BASE/project-name --all
 
 ---
 
-## ⛔ 主 agent 编排纪律（所有分析模式全局生效）
+## ⛔ 主 agent 编排纪律（原完整分析模式）
 
-以下纪律对标准三层 / 最大分析 / 递归深度 / 费曼学习卡片**全部模式生效**，来源于实战复盘（2026-08 LightRAG 分析）：
+以下纪律对标准三层 / 最大分析 / 递归深度 / 费曼学习卡片生效；初步与整理按顶部规则使用专用指南。来源于实战复盘（2026-08 LightRAG 分析）：
 
 1. **主 agent 零代码阅读**：只读 README/文档、自己的产出（PLAN/Glossary/INDEX/task-report/验证报告）和文件清单（glob/wc/find 输出、module manifest）。**禁止逐行读取源码文件**——那是子代理的工作。需要了解项目结构时，先派"项目侦察"子代理输出 `.project-scout.json`。理由：主 agent 上下文是 4-8 小时流水线中最稀缺的资源。
 2. **六段式派发全局强制**：见下节"六段式结构化派发模板"——它不再只属于递归深度模式，任何分析模式派发子代理都必须使用。单段任务描述（"你是一个源码分析专家，请分析…"）是派发漂移之源，**禁止**。
@@ -157,6 +181,8 @@ python3 $SKILL_DIR/scripts/verify-analysis.py $OUTPUT_BASE/project-name --all
 ```
 output-dir/
 ├── INDEX.md                          # 总索引
+├── 00-initial/                       # 新增：初步分析底稿，按需生成
+├── reading/                          # 新增：基于底稿的阅读文档，按需生成
 ├── 00-project-level/                 # Layer 1: 项目级
 │   ├── README.md                     # 项目概览
 │   ├── architecture.md               # 架构设计
@@ -173,7 +199,7 @@ output-dir/
 │   └── <file>-analysis.md
 ├── 30-specialized/                   # 专项维度（按检测类型，见"⛔ 专项类型必须转化为 PLAN 任务"）
 │   └── <type>/
-└── 40-learning/                      # 🎓 费曼学习卡片（**必产**，分析闭环的标准环节）
+└── 40-learning/                      # 🎓 原完整分析模式的学习卡片
     ├── INDEX.md                      # 学习卡片索引
     └── LEARN_XX_<CONCEPT>.md         # 教学卡片（讲解/核心问题/要点总结/常见误解，全自动生成）
 ```
@@ -195,6 +221,8 @@ output-dir/
 
 | 模式 | 触发 | 深度 | 输出规模 | 详情 |
 |------|------|------|---------|------|
+| **初步分析** | 初步/先了解/快速了解源码 | 全局映射 + 代表性流程和机制取证 | 8 篇底稿 | [INITIAL_ANALYSIS.md](guides/INITIAL_ANALYSIS.md) |
+| **文档整理** | 整理已有材料/生成阅读文档 | 由已有材料决定，不新增源码研究 | 按选定主题 | [READING_SYNTHESIS.md](guides/READING_SYNTHESIS.md) |
 | **标准三层** | 默认 | 项目级+模块级+文件级（按需） | 20-60 文档 | 本节 + 运行时适配层 |
 | **🚀 最大分析** | "深度/详细/全面/彻底"等关键词 | 三层全开 + 专项全开 | 40-80+ 文档 | [guides/RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) |
 | **🔁 递归深度** | "递归分析/逐模块深入"等关键词 | 每模块完整三层递归 | 120-350+ 文档 | [guides/RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) |
@@ -262,7 +290,7 @@ output-dir/
 
 > 多类型组合分析的检测逻辑、模板合并、输出组织见 [guides/DETAILED_RESEARCH_PLAN.md](guides/DETAILED_RESEARCH_PLAN.md)。
 
-### ⛔ 专项类型必须转化为 PLAN 任务（防"检测了却没用上"）
+### ⛔ 专项类型必须转化为 PLAN 任务（原完整分析模式）
 
 **实战教训（2026-08 LightRAG）**：detect-project-type.py 正确识别了 llm-agent 类型（置信度 390 分、12 个专项模板），但模块清单仍只按目录结构切分，专项维度一个都没进 PLAN——检索/上下文工程、缓存系统等最值得写的维度全部缺失，类型检测沦为装饰。
 
@@ -334,13 +362,14 @@ output-dir/
 
 | 脚本 | 功能 |
 |------|------|
+| `prepare-stage.py` | 新阶段准备：`initial` / `reading`，仅生成计划与状态，拒绝覆盖 |
 | `smart-analyze.py` | 🤖 智能分析入口 - 自动检测项目类型、推荐模板 |
 | `generate-research-plan.py` | 生成详细研究计划（预研究 + 任务分解） |
 | `generate-file-list.py` | 自动识别关键文件，生成文件列表 |
 | `generate-module-manifest.py` | 🔁 生成模块清单（递归分析专用） |
 | `recursive-orchestrator.py` | 🔁 递归深度分析编排器 v2 - 生成 PLAN.md |
 | `detect-project-type.py` | 自动检测项目类型（LLM Agent/Database/Web） |
-| `verify-analysis.py` | 验证分析文档完整性和质量（`--recursive` / `--all` / `--maximum`） |
+| `verify-analysis.py` | 分模式验收：新增 `--initial` / `--reading`；原 `--recursive` / `--all` / `--maximum` 保留 |
 | `evidence-check.py` | 🔍 证据锚定验证（file:line 真实性，防幻觉引用） |
 | `mermaid-validator.py` | 🎨 Mermaid 图表语法检验器 |
 | `plan-tracker.py` | 📋 计划追踪器 - 检查点管理、进度同步 |
@@ -360,6 +389,8 @@ output-dir/
 
 | 文档 | 内容 |
 |------|------|
+| [INITIAL_ANALYSIS.md](guides/INITIAL_ANALYSIS.md) | 初步分析：范围、预算、证据、续接 |
+| [READING_SYNTHESIS.md](guides/READING_SYNTHESIS.md) | 文档整理：概览/专题/模块、材料指纹、增量同步 |
 | [ANALYSIS_WORKFLOW.md](guides/ANALYSIS_WORKFLOW.md) | ⭐ 完整分析流程（快速扫描→架构理解→深度分析→质量评估） |
 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) | 🔁 最大/递归深度分析全细节（触发词/策略/模块规模/验证） |
 | [PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md) | 📋 计划驱动执行（检查点+验收） |
@@ -389,7 +420,7 @@ output-dir/
 
 ---
 
-## 💰 成本与确认纪律（长任务过程保障）
+## 💰 成本与确认纪律（原完整分析长任务）
 
 ### Token/成本预算账本
 
@@ -422,7 +453,7 @@ output-dir/
 
 ---
 
-## 执行纪律（流程顺序）
+## 执行纪律（原完整分析流程顺序）
 
 0. **📌 先注册 Goal** — 分析开始前注册任务，确保状态持久化
    （OpenClaw/CLI：`goal-tracker.py register`；**DSH：`create_goal`**；见 `runtime/environments/dsh.md`）
@@ -463,7 +494,7 @@ output-dir/
 
 ---
 
-## 执行注意事项
+## 执行注意事项（原完整分析模式）
 
 1. **并行派发子任务**：不同维度分析任务分配给并行执行器（使用 `[DISPATCH]` 行为指令）
 2. **增量生成**：先生成核心文档，再补充专项分析
@@ -484,7 +515,7 @@ output-dir/
 
 ---
 
-## 执行闭环（入口）
+## 执行闭环（原完整分析入口）
 
 分析完成后执行以下闭环动作。**A 组为通用核心闭环（所有环境必做）**；**B 组为可选环境钩子（由适配层能力矩阵声明，环境不支持时显式跳过并在 VERSION.md 记录"已跳过及原因"，禁止假装完成）**。完整细节见 [EXECUTION_CLOSURE.md](guides/EXECUTION_CLOSURE.md)。
 
@@ -496,7 +527,7 @@ output-dir/
 | **A1** | 🔗 记录 Commit | `commit-tracker.py record /path/to/project --output-dir <dir> --analysis-mode <mode>` |
 | **A2** | 创建版本记录 | 复制 `templates/VERSION_TEMPLATE.md` → `VERSION.md`，填入 commit 信息 |
 | **A3** | 验证完整性 | 标准/最大：`verify-analysis.py [dir] --all`；递归：`--recursive` |
-| **A4** | 🎓 生成学习文档（必做） | 从分析文档提炼 P0/P1/P2 知识点，费曼四步法生成 `40-learning/` 卡片；所有模式均执行，仅用户明确说"不要"才跳过 |
+| **A4** | 🎓 生成学习文档（必做） | 原完整分析模式从底稿提炼 P0/P1/P2 知识点，生成 `40-learning/` 卡片；初步/整理不自动执行 |
 
 > A4 派发要求：学习卡片批同样走六段式派发（DSH ≥2 张时用 workflow `tasks` 数组）。详见 [FEYNMAN_LEARNING_OUTPUT.md](guides/FEYNMAN_LEARNING_OUTPUT.md)。
 

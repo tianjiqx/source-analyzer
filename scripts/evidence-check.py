@@ -11,7 +11,7 @@
   python3 scripts/evidence-check.py <analysis-dir> --project <project-path> \
       [--sample 0.2] [--min-per-doc 3] [--content] [--json]
 
-  analysis-dir : 分析输出目录（递归扫描 .md）
+  analysis-dir : 分析输出目录（递归扫描 .md，根扫描跳过 00-initial/reading；可显式指定子目录抽查）
   --project    : 被分析项目根目录
   --sample     : 抽样比例（默认 0.2 = 20% 文档；1 = 全量）
   --min-per-doc: 每文档最低引用数（默认 3，低于则该文档不合格）
@@ -46,6 +46,7 @@ def find_md_files(analysis_dir: Path):
     return sorted(
         p for p in analysis_dir.rglob("*.md")
         if p.name not in meta and not any(part.startswith(".") for part in p.relative_to(analysis_dir).parts)
+        and p.relative_to(analysis_dir).parts[0] not in {"00-initial", "reading"}
     )
 
 def extract_module_path(analysis_dir: Path, md_file: Path) -> str:

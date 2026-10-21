@@ -21,6 +21,11 @@ from pathlib import Path
 from datetime import datetime
 
 
+def is_additive_stage(path, root):
+    """Initial/reading outputs do not count as legacy deep-analysis evidence."""
+    return path.relative_to(root).parts[0] in {"00-initial", "reading"}
+
+
 # 必需文件定义（支持两种结构：扁平式 00-README.md 和 目录式 00-project-level/README.md）
 REQUIRED_FILES = {
     "00-README.md": {
@@ -133,6 +138,8 @@ def check_index_consistency(analysis_dir: Path) -> dict:
     for nested in analysis_dir.rglob('INDEX.md'):
         if nested == index_path:
             continue
+        if is_additive_stage(nested, analysis_dir):
+            continue
         rel = nested.relative_to(analysis_dir)
         if any(part.startswith('.') for part in rel.parts):
             continue
@@ -169,6 +176,8 @@ def check_index_consistency(analysis_dir: Path) -> dict:
     # 反向检查：扫描所有 .md 文件，找出未被任何 INDEX 引用的
     all_md_files = set()
     for md_file in analysis_dir.rglob('*.md'):
+        if is_additive_stage(md_file, analysis_dir):
+            continue
         rel = md_file.relative_to(analysis_dir)
         # 排除验证报告自身、导航/元/工作文件、隐藏文件
         if md_file.name in ORPHAN_EXCLUDE_NAMES:
@@ -316,6 +325,8 @@ def check_diagram_types(analysis_dir: Path) -> dict:
     layout_docs = 0
     layout_missing = []
     for md in analysis_dir.glob("**/*.md"):
+        if is_additive_stage(md, analysis_dir):
+            continue
         c = md.read_text(errors="ignore")
         if any(k in c for k in layout_section_kw):
             layout_docs += 1
@@ -873,7 +884,7 @@ def check_maximum_mode(analysis_dir: str) -> dict:
     }
     
     # 1. 统计总文件数
-    md_files = list(analysis_path.glob("**/*.md"))
+    md_files = [p for p in analysis_path.glob("**/*.md") if not is_additive_stage(p, analysis_path)]
     result["total_files"] = len(md_files)
     result["details"]["total_files"] = result["total_files"]
     
@@ -1165,7 +1176,7 @@ def check_recursive_mode(analysis_dir: str) -> dict:
     }
     
     # 1. 统计总文件数
-    md_files = list(analysis_path.glob("**/*.md"))
+    md_files = [p for p in analysis_path.glob("**/*.md") if not is_additive_stage(p, analysis_path)]
     result["total_files"] = len(md_files)
     result["details"]["total_files"] = result["total_files"]
     
@@ -1366,9 +1377,18 @@ def main():
     parser.add_argument("--all", action="store_true", help="Check both completeness and quality (default)")
     parser.add_argument("--maximum", action="store_true", help="Check if analysis meets maximum mode requirements")
     parser.add_argument("--recursive", action="store_true", help="Check if analysis meets recursive deep analysis mode requirements")
+    stages = parser.add_mutually_exclusive_group()
+    stages.add_argument("--initial", action="store_true", help="Check 00-initial structure and recorded completion")
+    stages.add_argument("--reading", action="store_true", help="Check reading pages, sources and material freshness")
     parser.add_argument("--forbidden-allow", default="", help="禁止词豁免列表（逗号分隔，如：todo,workflow）")
 
     args = parser.parse_args()
+
+    if args.initial or args.reading:
+        if args.completeness or args.quality or args.all or args.maximum or args.recursive:
+            parser.error("--initial/--reading 不可与完整分析验收选项混用")
+        from analysis_stages import run_verification
+        return run_verification(args.analysis_dir, "initial" if args.initial else "reading")
 
     if args.forbidden_allow:
         FORBIDDEN_ALLOW.extend(w.strip() for w in args.forbidden_allow.split(',') if w.strip())

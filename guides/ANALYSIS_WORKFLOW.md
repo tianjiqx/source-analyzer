@@ -2,6 +2,13 @@
 
 > **做什么**: 系统化分析源码——快速扫描 → 架构理解 → 深度分析 → 质量评估。
 
+## 先按请求路由
+
+- 初步了解项目：执行 [INITIAL_ANALYSIS.md](INITIAL_ANALYSIS.md)，产出 `00-initial/`，使用 `prepare-stage.py initial` 与 `verify-analysis.py --initial`。
+- 整理已有分析：执行 [READING_SYNTHESIS.md](READING_SYNTHESIS.md)，产出 `reading/`，使用 `prepare-stage.py reading` 与 `verify-analysis.py --reading`。
+- 继续深入：先读 [递归指南的初步成果续接入口](RECURSIVE_DEEP_ANALYSIS.md)，保留原索引与元数据；不要重新执行下面的初始化脚本覆盖已有产出。
+- 下列流程适用于原完整分析模式；初步和整理不继承其全量任务与验收要求。
+
 ---
 
 ## 自动化流程（推荐，快速开始）

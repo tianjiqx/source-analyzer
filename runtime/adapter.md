@@ -1,5 +1,7 @@
 # 运行时环境适配协议
 
+> **模式先行**：先按 SKILL.md 路由。初步分析与文档整理默认单 agent 串行，使用各自 PLAN/状态与专用验收，不加载下文的完整任务编排、goal、学习卡片或调度闭环。实际需要派发时再使用相关能力；运行时能力存在不等于用户授权创建后台任务。参见 [初步分析](../guides/INITIAL_ANALYSIS.md) 与 [文档整理](../guides/READING_SYNTHESIS.md)。
+
 > **核心原则**：Skill 的分析逻辑（意图）与执行机制（行为）完全分离。  
 > 不同运行环境（OpenClaw / opencode / Claude Code / Cursor / 纯 CLI）通过适配层接入。
 

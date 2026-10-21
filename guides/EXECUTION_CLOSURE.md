@@ -2,6 +2,10 @@
 
 > 确保分析结果持久化、可追溯、可复用
 
+## 模式适用范围
+
+本文件的完整闭环适用于原标准/最大/递归分析。初步分析按 [INITIAL_ANALYSIS.md](INITIAL_ANALYSIS.md) 保存八篇底稿、源码基线、状态和路线图，以 `--initial` 验收；文档整理按 [READING_SYNTHESIS.md](READING_SYNTHESIS.md) 保存来源、阅读导航与状态，以 `--reading` 验收。两者不自动生成学习卡片、注册 goal、更新对比库/长期记忆或创建定时任务，不要求旧完整分析文档数量。`partial` 允许交付但不可标完成。
+
 ---
 
 ## 1. 分析结果的可选记忆回写

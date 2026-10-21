@@ -28,6 +28,31 @@ cp -r /path/to/source-analyzer ~/.openclaw/workspace/skills/
 
 ## 快速开始
 
+### 初步分析：先建立项目全景
+
+```bash
+python3 "$SKILL_DIR/scripts/prepare-stage.py" initial /path/to/project \
+  --output "$OUTPUT_BASE/project-name"
+# 按 guides/INITIAL_ANALYSIS.md 执行，填入八篇底稿与状态，再验收
+python3 "$SKILL_DIR/scripts/verify-analysis.py" "$OUTPUT_BASE/project-name" --initial
+```
+
+输出在 `00-initial/`：项目作用、代码组织、架构、核心流程、技术机制、设计亮点、深入路线图及索引。默认单 agent 有界取证，20 个源码文件 / 3000 行片段 / 3 轮；预算不足保存部分成果。范围与完成条件见 [初步分析指南](guides/INITIAL_ANALYSIS.md)。
+
+### 文档整理：将已有底稿编成阅读文档
+
+```bash
+python3 "$SKILL_DIR/scripts/prepare-stage.py" reading "$OUTPUT_BASE/project-name" \
+  --material 00-initial/project-overview.md \
+  --material 00-initial/architecture.md
+# 按 guides/READING_SYNTHESIS.md 写正文，填写 sources.json 的页面来源，再验收
+python3 "$SKILL_DIR/scripts/verify-analysis.py" "$OUTPUT_BASE/project-name" --reading
+```
+
+可直接选用旧递归成果作为 `--material`，不必先做初步分析。`reading/` 按 overview/topics/modules 组织，只创建有材料支持的页面；来源指纹变化会提示待同步页面。准备器只生成 PLAN 和元数据，重复执行拒绝覆盖；继续时读取原计划。两种验收只检查结构/来源记录，不证明语义或实际运行正确。
+
+初步和整理均为独立阶段，不自动串联。原递归输出路径保持不变；继续深入时先读初步成果，按 [续接规则](guides/RECURSIVE_DEEP_ANALYSIS.md) 核对版本和范围。完整规则见 [文档整理指南](guides/READING_SYNTHESIS.md)。
+
 ### 按模型设置请求上下文
 
 分析前根据当前模型生成请求预算；默认未知模型按 256K 处理，显式的 `--context-window` 或 `SOURCE_ANALYZER_CONTEXT_WINDOW` 优先：
@@ -39,7 +64,9 @@ python3 scripts/context_budget.py --model "$MODEL" \
 
 派发子任务时使用该文件中的 `max_input_tokens` / `max_output_tokens`，输入超限按模块边界拆分。
 
-### 自动化流程（推荐）
+### 原完整分析自动化流程
+
+下列准备流程会写根索引和项目元数据；不用于初步/整理阶段，也不要在续接时覆盖已有成果。
 
 ```bash
 # Step 1: 智能分析（自动检测项目类型 + 推荐模板）
@@ -125,6 +152,8 @@ source-analyzer/
 
 ## 🚀 最大分析模式
 
+仅当用户要求最大/全面分析时使用。初步请求中的“技术原理深入一点”，或“整理已有深入分析”，按各自阶段路由。
+
 触发关键词：深度/深入、详细/全面、彻底/系统化、完整/最大化
 
 **输出预期**: 40-80+ 个文档，包括：
@@ -170,12 +199,16 @@ python3 scripts/verify-analysis.py <output-dir> --maximum
 
 ## 执行注意事项
 
+以下是原完整分析规则；初步和整理使用各自指南中的预算、图表和验收要求。
+
 1. **按运行时适配层执行**：支持并行时将独立维度分配给子代理，否则串行执行
 2. **增量生成**：先生成核心文档，再补充专项分析
 3. **质量优先**：每个文档必须包含完整的问题清单回答
 4. **🎨 图表必生成**：每个分析文档至少 1 个与内容匹配的图表；物理布局使用 ASCII 图
 
 ## 执行闭环
+
+初步与整理完成各自的状态、索引与专用验收即可；下列完整闭环不自动应用于这两个阶段。
 
 分析完成后执行闭环动作，分两层（详见 [runtime/adapter.md](runtime/adapter.md) 能力矩阵）：
 
