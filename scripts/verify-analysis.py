@@ -447,6 +447,7 @@ def check_file_exists(analysis_dir: Path, filename: str) -> dict:
         "size": filepath.stat().st_size if exists else 0,
         "status": "✅" if exists else "❌",
         "resolved": str(filepath),
+        "score": 0,
     }
 
 

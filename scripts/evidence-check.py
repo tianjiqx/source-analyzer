@@ -31,7 +31,10 @@ from pathlib import Path
 # 格式1: `file.py:123` 或 `file.py:123-456`（标准）
 # 格式2: file.py:123 或 file.py:123-456（非标准，但实际存在）
 # 注：md/markdown 项目（Agent Skill 等）证据引用为 .md 文件，必须纳入匹配
-REF_RE = re.compile(r"`?([a-zA-Z0-9_/.-]+\.(?:go|py|rs|java|ts|js|c|cc|cpp|h|hpp|rb|php|kt|swift|scala|md|sh|toml|json|yaml|yml|erl|hrl|ex|exs|cs|lua|sql|proto)):(\d+)(?:-(\d+))?`?")
+# 注：HTML/SVG 项目（diagram-design 等，2026-10-11）证据引用为 .html/.svg/.css，必须纳入匹配
+# 2026-10-18 补丁（ruflo SvelteKit）：字符类加 '+' 与 '[]'——SvelteKit 的 +server.ts/
+# +page.svelte 与动态路由 [id] 段命名此前被截断，致批量误判"文件不唯一/越界"
+REF_RE = re.compile(r"`?([a-zA-Z0-9_/.+\[\]()-]+\.(?:go|py|rs|java|tsx|jsx|ts|js|mjs|cjs|mts|c|cc|cpp|h|hpp|rb|php|kt|swift|scala|md|sh|toml|json|yaml|yml|erl|hrl|ex|exs|cs|lua|sql|proto|html|htm|svg|css|vue|svelte)):(\d+)(?:-(\d+))?`?")
 FORBIDDEN_NOTE = "[未验证]"
 
 
@@ -39,7 +42,7 @@ def find_md_files(analysis_dir: Path):
     # 排除自动生成/元文档：EVIDENCE_REPORT.md（本脚本）、PLAN.md/INDEX.md/
     # VERIFICATION_REPORT.md/VERSION.md（编排与验收文档，非分析产出，无证据义务）
     # 以及隐藏文件（.glossary-*.md 术语提案等点前缀元文档，天然无证据义务）
-    meta = {"EVIDENCE_REPORT.md", "PLAN.md", "INDEX.md", "VERIFICATION_REPORT.md", "VERSION.md", "MERMAID_VALIDATION_REPORT.md", "RECURSIVE_MODE_REPORT.md"}
+    meta = {"EVIDENCE_REPORT.md", "PLAN.md", "ANALYSIS_PLAN.md", "INDEX.md", "FILE_LIST.md", "Glossary.md", "VERIFICATION_REPORT.md", "VERSION.md", "MERMAID_VALIDATION_REPORT.md", "RECURSIVE_MODE_REPORT.md"}
     return sorted(
         p for p in analysis_dir.rglob("*.md")
         if p.name not in meta and not any(part.startswith(".") for part in p.relative_to(analysis_dir).parts)
@@ -213,13 +216,13 @@ def _filelist_disambiguate(rel):
     return uniq[0] if len(uniq) == 1 else None
 
 
-def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, claim_tokens=None, module_path: str = ""):
+def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, claim_tokens=None, module_path: str = "", extra_roots=()):
     """返回 (ok, reason)"""
-    # 尝试多种路径：项目根相对 / 模块相对
+    # 尝试多种路径：项目根相对 / 模块相对 / 分析输出根相对（语料互引，如 10-module-deep/...）
     candidates = [
         project / rel,
         project / module_path / rel if module_path else None,
-    ]
+    ] + [root / rel for root in extra_roots]
     f = None
     for candidate in candidates:
         if candidate and candidate.exists():
@@ -256,6 +259,14 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
                             if str(m).endswith(rel) or str(m).endswith("/".join(rel_parts)):
                                 f = m
                                 break
+                        if f is None and len(candidates_for_fuzzy) != len(matches):
+                            # 2026-10-18 补丁（ruflo）：module_path 过滤可能错误收窄候选集——
+                            # 输出模块名（如 "shared"/"neural"）与仓库包目录（@claude-flow/shared 等）
+                            # 碰撞时，唯一正确文件被过滤掉。后缀匹配失败时回退全量候选重试一次。
+                            for m in matches:
+                                if str(m).endswith(rel) or str(m).endswith("/".join(rel_parts)):
+                                    f = m
+                                    break
                         if f is None:
                             for m in candidates_for_fuzzy:
                                 m_str = str(m)
@@ -268,9 +279,12 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
                 if f is None:
                     # 白名单消歧：裸文件名/短路径 → 注入 fileList 唯一完整路径。
                     # 多候选（如多个 lib.rs）时用「行号界内」过滤取唯一。
+                    # 2026-10-18 补丁（ruflo @-scoped 包）：REF_RE 字符类不含 '@'，
+                    # 引用 `v3/@claude-flow/...` 被截断为 `claude-flow/...`，endswith("/"+rel)
+                    # 永不命中 → 增加 rel in p 子串条件（行号界内过滤仍在，安全性不变）。
                     cands = []
                     for p in _FILELIST_PATHS:
-                        if p == rel or p.endswith("/" + rel) or Path(p).name == Path(rel).name:
+                        if p == rel or p.endswith("/" + rel) or Path(p).name == Path(rel).name or rel in p:
                             cands.append(p)
                     uniq = [p for p in dict.fromkeys(cands) if (project / p).exists()]
                     if len(uniq) == 1:
@@ -344,6 +358,10 @@ def main():
 
     results, total_refs, bad_refs, low_docs = [], 0, 0, []
     fixed_refs = 0
+    # 语料互引解析根: 被扫目录自身与其父级(输出根,如 <corpus>/00-project-level 的父)
+    extra_roots = [analysis_dir]
+    if analysis_dir.parent != analysis_dir:
+        extra_roots.append(analysis_dir.parent)
     for md in sampled:
         text = md.read_text(encoding="utf-8", errors="replace")
         module_path = extract_module_path(analysis_dir, md)
@@ -362,10 +380,10 @@ def main():
                 line_start = text.rfind("\n", 0, m.start()) + 1
                 if FORBIDDEN_NOTE in text[line_start:text.find("\n", m.start())]:
                     continue
-                rel, l1 = m.group(1), int(m.group(2))
+                rel, l1 = m.group(1).lstrip("("), int(m.group(2))  # 剥离散文括号（(nav) 组名仅允许出现在路径中段）
                 l2 = int(m.group(3) or l1)
                 tokens = extract_claim_tokens(text, m.span()) if args.content else None
-                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots)
                 total_refs += 1
                 if not ok:
                     # 尝试自动修复
@@ -391,10 +409,10 @@ def main():
                 line_start = text.rfind("\n", 0, m.start()) + 1
                 if FORBIDDEN_NOTE in text[line_start:text.find("\n", m.start())]:
                     continue
-                rel, l1 = m.group(1), int(m.group(2))
+                rel, l1 = m.group(1).lstrip("("), int(m.group(2))  # 剥离散文括号（(nav) 组名仅允许出现在路径中段）
                 l2 = int(m.group(3) or l1)
                 tokens = extract_claim_tokens(text, m.span()) if args.content else None
-                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path)
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots)
                 total_refs += 1
                 if not ok:
                     bad_refs += 1
