@@ -42,6 +42,8 @@
 
 **目标**: 识别所有模块，递归展开大型目录，评估规模与重要性
 
+当模块职责或行为以自然语言描述、实现入口尚不清楚时，可按需用 Semble MCP 搜索候选文件；结果仅用于确定阅读顺序，逐文件深读仍遵循 manifest 和源码证据要求。
+
 ```bash
 # 递归生成模块清单（自动展开超过阈值的目录）
 python3 scripts/generate-module-manifest.py /path/to/project \
