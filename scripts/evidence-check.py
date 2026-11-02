@@ -21,6 +21,7 @@
 退出码：0=通过（造假率 < 阈值）；1=不合格（需全产出复审）；2=用法错误
 """
 import argparse
+import os
 import json
 import random
 import re
@@ -38,6 +39,37 @@ REF_RE = re.compile(r"`?([a-zA-Z0-9_/.+\[\]()-]+\.(?:go|py|rs|java|tsx|jsx|ts|js
 FORBIDDEN_NOTE = "[未验证]"
 
 
+# —— basename 索引记忆化（2026-10-25 补丁 cindy）：项目树只走一遍，
+# 后续「文件不唯一」消歧全部走字典查询；修复超大仓库每引用一次 rglob 的开销。
+_BASENAME_INDEX: dict = {}
+_INDEX_PROJECT = None
+
+def _index_project(project: Path):
+    global _BASENAME_INDEX, _INDEX_PROJECT
+    if _INDEX_PROJECT == project and _BASENAME_INDEX:
+        return _BASENAME_INDEX
+    idx: dict = {}
+    try:
+        for _p in project.rglob("*"):
+            try:
+                if _p.is_file():
+                    idx.setdefault(_p.name, []).append(_p)
+            except OSError:
+                continue
+    except (OSError, ValueError):
+        pass
+    _BASENAME_INDEX = idx
+    _INDEX_PROJECT = project
+    return idx
+
+def _rglob_name(project: Path, name: str):
+    return _index_project(project).get(name, [])
+
+def _rglob_partial(project: Path, pattern: str):
+    import fnmatch
+    return [_p for paths in _index_project(project).values() for _p in paths
+            if fnmatch.fnmatch(_p.name, pattern)]
+
 def find_md_files(analysis_dir: Path):
     # 排除自动生成/元文档：EVIDENCE_REPORT.md（本脚本）、PLAN.md/INDEX.md/
     # VERIFICATION_REPORT.md/VERSION.md（编排与验收文档，非分析产出，无证据义务）
@@ -54,13 +86,43 @@ def extract_module_path(analysis_dir: Path, md_file: Path) -> str:
     # 例如：analysis_dir="openviking-analysis/10-module-deep/crates", md_file=".../crates/00-overview/README.md"
     # 返回："crates"
     try:
+        # 2026-10-25 补丁（open-math-harness）：以输出根目录整体调用时，
+        # "10-module-deep" 在 md_file 而非 analysis_dir 的部件里——
+        # 优先从 md_file 提取（含家族嵌套，如 program-files/discovery-client）。
+        _SKIP = {"00-overview", "10-submodule", "20-file-level", "20-cross-module", "30-specialized"}
+        mparts = md_file.parts
+        if "10-module-deep" in mparts:
+            idx = mparts.index("10-module-deep")
+            mdrel = mparts[idx + 1:]
+            if not mdrel:
+                return ""
+            mod = [p for p in mdrel if p not in _SKIP and not p.endswith(".md")]
+            if mod:
+                return "/".join(mod)
+            return mdrel[0]
         # 尝试从 analysis_dir 推断模块名
-        # 如果 analysis_dir 包含 "10-module-deep"，取其后的第一级目录
+        # 如果 analysis_dir 包含 "10-module-deep"，取其后目录
         parts = analysis_dir.parts
         if "10-module-deep" in parts:
             idx = parts.index("10-module-deep")
-            if idx + 1 < len(parts):
-                return parts[idx + 1]
+            rest = parts[idx + 1:]
+            if not rest:
+                return ""
+            # 2026-10-25 补丁（open-math-harness）：家族嵌套模块（如
+            # 10-module-deep/program-files/discovery-client/00-overview/…）时，
+            # 只取第一级（"program-files"）无法消歧 51 个 lib.rs——
+            # 用 md_file 相对路径剥掉固定产出层目录与文件名，得到最深模块路径
+            # （"program-files/discovery-client"）；check_ref 里以 exists() 试错，
+            # 推断过深也不会误判。
+            try:
+                mdrel2 = md_file.relative_to(analysis_dir).parts
+            except ValueError:
+                mdrel2 = ()
+            mod = [p for p in mdrel2
+                   if p not in _SKIP and not p.endswith(".md")]
+            if mod:
+                return "/".join(mod)
+            return rest[0]
         # 否则尝试从 md_file 推断
         rel = md_file.relative_to(analysis_dir.parent if "10-module-deep" in analysis_dir.parts else analysis_dir)
         if rel.parts and rel.parts[0] != "10-module-deep":
@@ -85,7 +147,7 @@ def try_auto_fix(project: Path, rel: str, l1: int, l2: int, module_path: str) ->
     if f is None:
         # 文件不存在，尝试搜索同名文件
         try:
-            matches = list(project.rglob(Path(rel).name))
+            matches = list(_rglob_name(project, Path(rel).name))
             if len(matches) == 1:
                 f = matches[0]
             elif len(matches) > 1 and module_path:
@@ -122,7 +184,7 @@ def try_auto_fix(project: Path, rel: str, l1: int, l2: int, module_path: str) ->
             ext = Path(rel).suffix  # 如 ".h"
             try:
                 partial_matches = []
-                for m in project.rglob(f"*{stem}*{ext}"):
+                for m in _rglob_partial(project, f"*{stem}*{ext}"):
                     if module_path and module_path not in str(m):
                         continue
                     partial_matches.append(m)
@@ -233,7 +295,7 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
     if f is None:
         # 尝试宽松匹配：文件名在项目中唯一存在
         try:
-            matches = list(project.rglob(Path(rel).name))
+            matches = list(_rglob_name(project, Path(rel).name))
             if len(matches) == 1:
                 f = matches[0]
             elif len(matches) > 1:
@@ -243,11 +305,30 @@ def check_ref(project: Path, rel: str, l1: int, l2: int, content_mode: bool, cla
                 # 过滤可能得到 0 个匹配——这时应回退到「后缀 + 关键段子串」的模糊消歧。
                 candidates_for_fuzzy = matches
                 if module_path:
-                    module_matches = [m for m in matches if module_path in str(m)]
-                    if len(module_matches) == 1:
-                        f = module_matches[0]
-                    elif len(module_matches) > 1:
-                        candidates_for_fuzzy = module_matches
+                    # 2026-10-25 补丁（open-math-harness）：两处改进——
+                    # ① 子串匹配有边界问题（"a/project" 是 "a/projects" 的子串）：
+                    #    先按 startswith(项目根/module_path + 分隔符) 做边界安全匹配；
+                    # ② module_path 可能含产物层级（10-submodule/<name>）在仓库中不存在：
+                    #    沿路径前缀逐级缩短重试，取最先给出唯一命中的层级。
+                    _prefixes = [module_path]
+                    while "/" in _prefixes[-1]:
+                        _prefixes.append(_prefixes[-1].rsplit("/", 1)[0])
+                    for _mp in _prefixes:
+                        _base = str(project / _mp)
+                        module_matches = [m for m in matches
+                                          if str(m) == _base or str(m).startswith(_base + os.sep)]
+                        if len(module_matches) == 1:
+                            f = module_matches[0]
+                            break
+                        elif len(module_matches) > 1:
+                            candidates_for_fuzzy = module_matches
+                    if f is None:
+                        # 回退旧子串行为（简写 module_path 不含真实目录的场景）
+                        module_matches = [m for m in matches if module_path in str(m)]
+                        if len(module_matches) == 1:
+                            f = module_matches[0]
+                        elif len(module_matches) > 1:
+                            candidates_for_fuzzy = module_matches
                     # module_matches 为空（简写不命中真实目录）→ 保持 candidates_for_fuzzy = matches
                 if f is None and len(candidates_for_fuzzy) > 1:
                     # 尝试匹配路径后缀 + 关键段子串（子代理常用模块内相对路径，如
@@ -384,7 +465,7 @@ def main():
                 rel, l1 = m.group(1).lstrip("("), int(m.group(2))  # 剥离散文括号（(nav) 组名仅允许出现在路径中段）
                 l2 = int(m.group(3) or l1)
                 tokens = extract_claim_tokens(text, m.span()) if args.content else None
-                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots)
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots + [md.parent])
                 total_refs += 1
                 if not ok:
                     # 尝试自动修复
@@ -413,7 +494,7 @@ def main():
                 rel, l1 = m.group(1).lstrip("("), int(m.group(2))  # 剥离散文括号（(nav) 组名仅允许出现在路径中段）
                 l2 = int(m.group(3) or l1)
                 tokens = extract_claim_tokens(text, m.span()) if args.content else None
-                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots)
+                ok, reason = check_ref(project, rel, l1, l2, args.content, tokens, module_path, extra_roots + [md.parent])
                 total_refs += 1
                 if not ok:
                     bad_refs += 1

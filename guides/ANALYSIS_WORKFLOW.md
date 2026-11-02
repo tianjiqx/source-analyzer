@@ -13,6 +13,8 @@
 
 ## 自动化流程（推荐，快速开始）
 
+进入原完整分析模式后，在项目级扫描前按 [SKILL.md](../SKILL.md) 的 codebase-memory-mcp 预检检查/初始化目标仓库索引。用图谱补充入口、模块关系和调用链侦察，并把索引状态/缺口记入研究计划；它不替代后续派发的源码分析与证据验收。递归模式见 [RECURSIVE_DEEP_ANALYSIS.md](RECURSIVE_DEEP_ANALYSIS.md)，初步模式见 [INITIAL_ANALYSIS.md](INITIAL_ANALYSIS.md)，各自预算和范围规则优先。
+
 ```bash
 # Step 0: 下载项目（如尚未下载，项目统一放 $WORKSPACE/opensource/）
 gh repo clone <owner>/<repo> -- --depth=1

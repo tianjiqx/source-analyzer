@@ -102,6 +102,8 @@ VALID_TYPE_PREFIXES = {
     'gitGraph',
     'quadrantChart',
     'timeline',
+    'xychart-beta',
+    'radar-beta',
     'C4Context', 'C4Container', 'C4Component',
 }
 
@@ -325,6 +327,19 @@ def check_subgraph_pairing(diagram: Diagram):
                     ))
         else:
             # 其他类型：subgraph/end 配对
+            # stateDiagram 的 note right of X ... end note 是合法块：end note 闭合 note，不是多余的 end
+            if diagram.diagram_type.startswith('stateDiagram') and stripped == 'end note':
+                if depth > 0:
+                    depth -= 1
+                continue
+            if diagram.diagram_type.startswith('stateDiagram') and (
+                stripped.startswith('note ') or stripped.startswith('note\t')
+            ):
+                # 单行 note（note right of X: text）自闭合，不开块；仅多行 note 需要 end note
+                if not re.match(r'note\s+(left|right)\s+of\s+\S+\s*:', stripped) \
+                        and not re.match(r'note\s+over\s+\S+\s*:', stripped):
+                    depth += 1
+                continue
             if stripped.startswith('subgraph'):
                 depth += 1
             elif stripped == 'end' or stripped.startswith('end '):
