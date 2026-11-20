@@ -120,11 +120,13 @@ def prepare_stage(mode, target, output=None, materials=()):
 
 1. 阅读 guides/READING_SYNTHESIS.md 和 templates/reading/OUTPUT_SPEC.md。
 2. 明确读者、本轮问题、选定材料；核对材料版本与相互冲突。
-3. 默认最多 12 份底稿、60000 字符、6 篇正文；预算不足则缩小本轮范围。
+3. 起始预算参考 12 份底稿、60000 字符、6 篇正文；按理解目标与用户约束在 PLAN 记录实际预算，执行中不静默扩张。
 4. 在 overview/topics/modules 中按材料创建实际需要的页面，填写 sources.json 的 pages。
 5. 每篇正文链接实际材料并保留证据状态；README.md 导航与覆盖说明保持一致。
 6. 执行 verify-analysis.py <分析根目录> --reading；根 INDEX.md 增加阅读入口。
-7. 更新时先修订受影响页面，再刷新材料指纹；不借整理阶段启动源码分析。
+7. 更新时先修订受影响页面，再刷新材料指纹；纯整理不启动源码分析。
+8. 图解请求加载 guides/READING_VISUAL_GUIDE.md，按理解目标安排阅读路线、核心机制和推演检查；无须凑图或填满目录。
+9. 已授权掌握原理的任务若需补证，衔接定向分析，先更新有来源的底稿再整理，保留证据缺口与完成状态。
 """
     # Validate all inputs before creating anything. Never overwrite a previous stage.
     stage.mkdir(parents=True, exist_ok=False)

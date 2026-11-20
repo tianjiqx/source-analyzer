@@ -35,7 +35,11 @@ from pathlib import Path
 # 注：HTML/SVG 项目（diagram-design 等，2026-10-11）证据引用为 .html/.svg/.css，必须纳入匹配
 # 2026-10-18 补丁（ruflo SvelteKit）：字符类加 '+' 与 '[]'——SvelteKit 的 +server.ts/
 # +page.svelte 与动态路由 [id] 段命名此前被截断，致批量误判"文件不唯一/越界"
-REF_RE = re.compile(r"`?([a-zA-Z0-9_/.+\[\]()-]+\.(?:go|py|rs|java|tsx|jsx|ts|js|mjs|cjs|mts|c|cc|cpp|h|hpp|rb|php|kt|swift|scala|md|sh|toml|json|yaml|yml|erl|hrl|ex|exs|cs|lua|sql|proto|html|htm|svg|css|vue|svelte)):(\d+)(?:-(\d+))?`?")
+# 2026-11-14 补丁（MasteringRAG 中文文件名）：字符类加 '\u4e00-\u9fff'——
+# 00_PDF解析与QA抽取_v1.1.ipynb 等中文文件名此前被截断成 _v1.1.ipynb 裸名，误报"文件不存在"
+# 2026-11-05 补丁（CopilotKit/OpenBot TanStack Router）：字符类加 '$'——$slug.tsx、
+# bots.$agentId.index.tsx 等路由文件名此前被截断成裸短名，误报"文件不存在"
+REF_RE = re.compile(r"`?([a-zA-Z0-9_\u4e00-\u9fff/.+$\[\]()-]+\.(?:go|py|rs|java|tsx|jsx|ts|js|mjs|cjs|mts|c|cc|cpp|h|hpp|rb|php|kt|swift|scala|md|sh|toml|json|yaml|ipynb|yml|erl|hrl|ex|exs|cs|lua|sql|proto|html|htm|svg|css|vue|svelte)):(\d+)(?:-(\d+))?`?")
 FORBIDDEN_NOTE = "[未验证]"
 
 
@@ -74,7 +78,7 @@ def find_md_files(analysis_dir: Path):
     # 排除自动生成/元文档：EVIDENCE_REPORT.md（本脚本）、PLAN.md/INDEX.md/
     # VERIFICATION_REPORT.md/VERSION.md（编排与验收文档，非分析产出，无证据义务）
     # 以及隐藏文件（.glossary-*.md 术语提案等点前缀元文档，天然无证据义务）
-    meta = {"EVIDENCE_REPORT.md", "PLAN.md", "ANALYSIS_PLAN.md", "INDEX.md", "FILE_LIST.md", "Glossary.md", "VERIFICATION_REPORT.md", "VERSION.md", "MERMAID_VALIDATION_REPORT.md", "RECURSIVE_MODE_REPORT.md"}
+    meta = {"EVIDENCE_REPORT.md", "PLAN.md", "ANALYSIS_PLAN.md", "INDEX.md", "FILE_LIST.md", "Glossary.md", "VERIFICATION_REPORT.md", "VERSION.md", "MERMAID_VALIDATION_REPORT.md", "RECURSIVE_MODE_REPORT.md", "recursive-plan.md"}
     return sorted(
         p for p in analysis_dir.rglob("*.md")
         if p.name not in meta and not any(part.startswith(".") for part in p.relative_to(analysis_dir).parts)

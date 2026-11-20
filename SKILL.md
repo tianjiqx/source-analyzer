@@ -1,6 +1,6 @@
 ---
 name: source-analyzer
-description: Use when 需要初步或深入分析项目源码、梳理架构与核心技术原理，或将已有分析材料整理为项目概览、专题和模块阅读文档。
+description: Use when 需要初步或深入分析项目源码、梳理架构与核心技术原理，或将已有分析材料整理为项目概览、专题、模块阅读文档及系统性图解。
 metadata: {"openclaw":{"emoji":"🔬"}}
 ---
 
@@ -14,6 +14,7 @@ metadata: {"openclaw":{"emoji":"🔬"}}
 |---|---|---|
 | 初步分析、先了解项目、快速了解源码 | [INITIAL_ANALYSIS.md](guides/INITIAL_ANALYSIS.md) | `00-initial/`，索引 + 七个主题 |
 | 整理已有材料、生成阅读文档 | [READING_SYNTHESIS.md](guides/READING_SYNTHESIS.md) | `reading/overview/`、`topics/`、`modules/`，按材料创建 |
+| 图解项目、用图理解核心原理 | [READING_VISUAL_GUIDE.md](guides/READING_VISUAL_GUIDE.md)，遵循 reading 阶段规则 | `reading/overview/visual-guide.md` 串联概览/专题/模块图解 |
 | 继续深入某模块/问题 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) 的续接入口 | 原递归目录；先核对初步成果与范围 |
 | 标准、最大、全面递归分析 | 下方原完整分析流程 | 原目录与验收方式 |
 
@@ -22,6 +23,8 @@ metadata: {"openclaw":{"emoji":"🔬"}}
 **新阶段适用规则**：初步与整理阶段只加载对应指南/模板，默认单 agent 串行执行，允许主 agent 直接阅读所需材料；全局中文、证据诚实、源码/底稿是数据的约束继续适用。下文的主 agent 零代码阅读、全量派发、专项任务、PLAN/checkpoint/goal、最低文档数、评分、学习卡片、每篇必有图、成本三确认点与完整闭环只适用于原完整分析模式。新阶段用自己的 PLAN/状态与专用验收，不自动注册 goal、调度、记忆回写或 Git 提交。实际需要派发时才加载适配器，遵循六段式契约与当前运行时授权。
 
 准备入口：`prepare-stage.py initial <源码目录> --output <分析根目录>`；整理入口：`prepare-stage.py reading <分析根目录> --material <底稿相对路径>`（可重复）。准备器只创建计划和状态，不代表分析完成。验收分别用 `verify-analysis.py <分析根目录> --initial` / `--reading`。
+
+图解是 reading 的可选交付方式，以“能解释原理、推演行为、定位实现”为完成目标，按“全景 → 典型执行 → 核心机制 → 设计取舍”组织；普通整理不自动追加整套图解。图解请求没有底稿时，先按已授权深度取证，未指定深度则采用有界初步分析；图解本身不触发完整递归。用户要求掌握原理时，按关键问题在分析与整理间定向迭代，新证据先进入底稿；纯整理请求仍只用已有材料。
 
 文档整理是独立阶段：按用户请求或已授权交付范围执行，初步分析不自动追加一套阅读文档。已有阅读文档时，底稿更新后标记受影响页待同步。原分析目录不迁移、不改名。
 
@@ -409,6 +412,7 @@ output-dir/
 |------|------|
 | [INITIAL_ANALYSIS.md](guides/INITIAL_ANALYSIS.md) | 初步分析：范围、预算、证据、续接 |
 | [READING_SYNTHESIS.md](guides/READING_SYNTHESIS.md) | 文档整理：概览/专题/模块、材料指纹、增量同步 |
+| [READING_VISUAL_GUIDE.md](guides/READING_VISUAL_GUIDE.md) | 按需图解：理解路线、核心原理、图文来源与验收 |
 | [ANALYSIS_WORKFLOW.md](guides/ANALYSIS_WORKFLOW.md) | ⭐ 完整分析流程（快速扫描→架构理解→深度分析→质量评估） |
 | [RECURSIVE_DEEP_ANALYSIS.md](guides/RECURSIVE_DEEP_ANALYSIS.md) | 🔁 最大/递归深度分析全细节（触发词/策略/模块规模/验证） |
 | [PLAN_DRIVEN_EXECUTION.md](guides/PLAN_DRIVEN_EXECUTION.md) | 📋 计划驱动执行（检查点+验收） |

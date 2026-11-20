@@ -54,6 +54,12 @@ python3 "$SKILL_DIR/scripts/verify-analysis.py" "$OUTPUT_BASE/project-name" --re
 
 初步和整理均为独立阶段，不自动串联。原递归输出路径保持不变；继续深入时先读初步成果，按 [续接规则](guides/RECURSIVE_DEEP_ANALYSIS.md) 核对版本和范围。完整规则见 [文档整理指南](guides/READING_SYNTHESIS.md)。
 
+### 图解项目：沿阅读路线理解核心原理
+
+可请求：“根据已有分析材料，图解项目的架构、典型执行过程与核心机制。”按 [图解指南](guides/READING_VISUAL_GUIDE.md) 在 README 安排理解路线，按需生成 `reading/overview/visual-guide.md`，串联概览、专题与模块中的图解；每个单元包含问题、图、分步解释、具体例子、取舍及来源。
+
+围绕贯穿案例解释核心表示、状态变化、不变量、取舍和边界，并提供有依据的理解推演。首轮 3–5 张图仅作参考，实际范围以理解目标与 PLAN 预算为准；普通整理仍按需配图。复用现有准备命令与来源格式，无新增 CLI 开关；缺少底稿时先按已授权深度取证，未指定深度则采用初步分析。要求掌握原理时，可围绕关键缺口迭代定向分析并更新底稿，再同步图解，不因已有底稿不足而停留在表层总结。图形默认使用 Mermaid，数据布局可用 ASCII / SVG，导出图片按需生成。
+
 ### 按模型设置请求上下文
 
 分析前根据当前模型生成请求预算；默认未知模型按 256K 处理，显式的 `--context-window` 或 `SOURCE_ANALYZER_CONTEXT_WINDOW` 优先：
